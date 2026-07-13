@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ระบบขอลา</title>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+  body { font-family: 'Sarabun', sans-serif; padding: 16px; max-width: 480px; margin: 0 auto; background:#f5f6f8; }
+  h2 { color:#06c755; }
+  label { display:block; margin-top: 14px; font-weight:bold; font-size:14px; }
+  input, select, textarea { width:100%; padding:10px; margin-top:6px; box-sizing:border-box; border:1px solid #ccc; border-radius:6px; font-size:15px; }
+  button { width:100%; padding:14px; margin-top:20px; border:none; border-radius:8px; font-size:16px; font-weight:bold; color:#fff; }
+  .btn-primary { background:#06c755; }
+  .btn-approve { background:#06c755; margin-right:4%; }
+  .btn-reject { background:#e0483e; }
+  .row-btns { display:flex; }
+  .row-btns button { width:48%; }
+  .msgbox { margin-top:14px; padding:10px; border-radius:6px; display:none; }
+  .ok { background:#e6f7ea; color:#1a7a34; }
+  .err { background:#fdecea; color:#b3261e; }
+  #loading { text-align:center; padding: 40px 0; white-space:pre-wrap; }
+  .card { background:#fff; border-radius:8px; padding:16px; margin-top:10px; box-shadow:0 1px 4px rgba(0,0,0,.1); }
+  .card .r { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #eee; font-size:14px; }
+  #debugPanel { white-space: pre-wrap; word-break: break-all; font-family: monospace; font-size: 11px; background:#111; color:#0f0; padding:10px; border-radius:6px; margin-top:14px; max-height:35vh; overflow:auto; }
+</style>
+</head>
+<body>
+  <div id="loading">กำลังโหลด...</div>
+  <div id="debugPanel"></div>
+
+  <!-- ฟอร์มยื่นคำขอลา (พนักงาน) -->
+  <div id="formApp" style="display:none;">
+    <h2>ยื่นคำขอลางาน</h2>
+    <div id="who"></div>
+    <label>ประเภทการลา</label>
+    <select id="leaveType">
+      <option>ลาป่วย</option>
+      <option>ลากิจ</option>
+      <option>ลาพักร้อน</option>
+      <option>ลาอื่นๆ</option>
+    </select>
+    <label>แผนก/ฝ่าย</label>
+    <input type="text" id="department" placeholder="เช่น ฝ่ายผลิต">
+    <label>วันที่เริ่มลา</label>
+    <input type="date" id="startDate">
+    <label>วันที่สิ้นสุด</label>
+    <input type="date" id="endDate">
+    <label>เหตุผล</label>
+    <textarea id="reason" rows="3" placeholder="ระบุเหตุผลการลา"></textarea>
+    <button class="btn-primary" onclick="submitForm()">ส่งคำขอลา</button>
+    <div id="formMsg" class="msgbox"></div>
+  </div>
+
+  <!-- หน้าอนุมัติ (หัวหน้างาน/ผู้บริหาร) -->
+  <div id="approveApp" style="display:none;">
+    <h2 id="roleTitle">Approval</h2>
+    <div class="card" id="detailCard"></div>
+    <label id="lblPin">Approval PIN</label>
+    <input type="text" id="otp" inputmode="numeric" placeholder="">
+    <div id="hintPin" style="font-size:12px;color:#999;margin-top:4px;"></div>
+    <label id="lblComment">Comment</label>
+    <textarea id="comment" rows="2"></textarea>
+    <div class="row-btns">
+      <button class="btn-approve" id="btnApprove" onclick="decide('approve')">Approve</button>
+      <button class="btn-reject" id="btnReject" onclick="decide('reject')">Reject</button>
+    </div>
+    <div id="approveMsg" class="msgbox"></div>
+  </div>
+
+  <script>
+    // ======================= ตั้งค่า =======================
+    var EXEC_URL = "https://script.google.com/macros/s/AKfycbwThIxxwTCdFaeSfgyOOdKKRr14dDz6pWhuTqvUqkkOqyF76Uvxb70iTbWII-wiRfzImA/exec";
+    var LIFF_ID = "2010670203-cILnaiQM";
+
+    // ======================= Debug log (โชว์บนจอ) =======================
+    window.__dbg = [];
+    function __log(msg) {
+      window.__dbg.push('[' + new Date().toTimeString().slice(0, 8) + '] ' + msg);
+      var el = document.getElementById('debugPanel');
+      if (el) el.textContent = window.__dbg.join('\n');
+    }
+    window.onerror = function (msg, url, line) { __log('window.onerror: ' + msg + ' @ ' + line); };
+    window.addEventListener('unhandledrejection', function (e) {
+      __log('unhandledrejection: ' + (e.reason && e.reason.message ? e.reason.message : e.reason));
+    });
+
+    // ======================= เรียก Apps Script ผ่าน fetch (GET) =======================
+    function callApi(fn, args) {
+      var url = EXEC_URL + '?api=1&fn=' + encodeURIComponent(fn) + '&payload=' + encodeURIComponent(JSON.stringify(args || []));
+      __log('API call: ' + fn);
+      return fetch(url).then(function (res) {
+        return res.json();
+      }).catch(function (err) {
+        __log('API FAILED: ' + fn + ' -> ' + err);
+        throw err;
+      });
+    }
+
+    // ======================= ข้อความ 2 ภาษา สำหรับหน้าอนุมัติ =======================
+    var T_TH = {
+      roleTitleSupervisor: 'หน้าอนุมัติ (หัวหน้างาน)', roleTitleExecutive: 'หน้าอนุมัติ (ผู้บริหาร)',
+      labelRequestId: 'เลขที่คำขอ', labelEmployee: 'พนักงาน', labelDept: 'แผนก',
+      labelType: 'ประเภทการลา', labelDates: 'วันที่', labelReason: 'เหตุผล', labelStatus: 'สถานะปัจจุบัน',
+      lblPin: 'กรอกรหัสอนุมัติของคุณ (PIN)', pinPlaceholder: 'ใส่รหัส PIN ของคุณ',
+      hintPin: 'รหัสนี้เป็นรหัสประจำตัวหัวหน้างาน/ผู้บริหาร ตั้งและแก้ไขได้ที่หน้า Admin > Settings',
+      lblComment: 'หมายเหตุ (กรณีไม่อนุมัติ กรุณาระบุเหตุผล)',
+      btnApprove: 'อนุมัติ', btnReject: 'ไม่อนุมัติ',
+      needPin: 'กรุณากรอกรหัสอนุมัติ', needComment: 'กรุณาระบุเหตุผลที่ไม่อนุมัติ',
+      error: 'เกิดข้อผิดพลาด: ', dash: '-', to: ' ถึง '
+    };
+    var T_EN = {
+      roleTitleSupervisor: 'Approval Page (Supervisor)', roleTitleExecutive: 'Approval Page (Executive)',
+      labelRequestId: 'Request ID', labelEmployee: 'Employee', labelDept: 'Department',
+      labelType: 'Leave Type', labelDates: 'Dates', labelReason: 'Reason', labelStatus: 'Current Status',
+      lblPin: 'Enter your Approval PIN', pinPlaceholder: 'Enter your PIN',
+      hintPin: 'This is your personal Executive approval PIN. It can be set/changed on the Admin > Settings page.',
+      lblComment: 'Comment (required if rejecting)',
+      btnApprove: 'Approve', btnReject: 'Reject',
+      needPin: 'Please enter your approval PIN', needComment: 'Please provide a reason for rejecting',
+      error: 'Error: ', dash: '-', to: ' to '
+    };
+
+    var profile = null;
+    var params = new URLSearchParams(location.search);
+    var requestId = params.get('id');
+    var role = params.get('role') || 'supervisor';
+    var T = role === 'executive' ? T_EN : T_TH;
+
+    __log('page started, LIFF_ID=' + LIFF_ID + ', mode=' + (requestId ? 'approve(' + role + ')' : 'form'));
+
+    if (typeof liff === 'undefined') {
+      document.getElementById('loading').innerText = 'ไม่พบไลบรารี LIFF กรุณาลองใหม่';
+    } else {
+      liff.init({ liffId: LIFF_ID }).then(function () {
+        __log('liff.init success, isInClient=' + liff.isInClient());
+        if (!liff.isLoggedIn()) { liff.login(); return; }
+        return liff.getProfile();
+      }).then(function (p) {
+        if (!p) return;
+        profile = p;
+        __log('profile ok: ' + p.displayName);
+        document.getElementById('loading').style.display = 'none';
+        if (requestId) {
+          initApprovePage();
+        } else {
+          initFormPage();
+        }
+      }).catch(function (err) {
+        __log('LIFF ERROR: ' + (err && err.message));
+        document.getElementById('loading').innerText = 'เกิดข้อผิดพลาดในการเชื่อมต่อ LINE: ' + (err && err.message ? err.message : err);
+      });
+    }
+
+    // ======================= หน้าฟอร์มยื่นคำขอลา =======================
+    function initFormPage() {
+      document.getElementById('formApp').style.display = 'block';
+      document.getElementById('who').innerText = 'ผู้ยื่นคำขอ: ' + profile.displayName;
+    }
+
+    function showFormMsg(text, ok) {
+      var el = document.getElementById('formMsg');
+      el.style.display = 'block';
+      el.className = 'msgbox ' + (ok ? 'ok' : 'err');
+      el.innerText = text;
+    }
+
+    function submitForm() {
+      var startDate = document.getElementById('startDate').value;
+      var endDate = document.getElementById('endDate').value;
+      if (!startDate || !endDate) { showFormMsg('กรุณาเลือกวันที่ให้ครบถ้วน', false); return; }
+
+      var data = {
+        userId: profile.userId,
+        displayName: profile.displayName,
+        leaveType: document.getElementById('leaveType').value,
+        department: document.getElementById('department').value,
+        startDate: startDate,
+        endDate: endDate,
+        reason: document.getElementById('reason').value
+      };
+
+      callApi('api_submitLeave', [data]).then(function (res) {
+        if (res.success) {
+          showFormMsg('ส่งคำขอลาเรียบร้อยแล้ว เลขที่คำขอ ' + res.requestId + ' รอหัวหน้างานอนุมัติ', true);
+        } else {
+          showFormMsg(res.message || 'เกิดข้อผิดพลาด', false);
+        }
+      }).catch(function (err) {
+        showFormMsg('เกิดข้อผิดพลาด: ' + err, false);
+      });
+    }
+
+    // ======================= หน้าอนุมัติ =======================
+    function applyStaticText() {
+      document.getElementById('roleTitle').innerText = role === 'executive' ? T.roleTitleExecutive : T.roleTitleSupervisor;
+      document.getElementById('lblPin').innerText = T.lblPin;
+      document.getElementById('otp').placeholder = T.pinPlaceholder;
+      document.getElementById('hintPin').innerText = T.hintPin;
+      document.getElementById('lblComment').innerText = T.lblComment;
+      document.getElementById('btnApprove').innerText = T.btnApprove;
+      document.getElementById('btnReject').innerText = T.btnReject;
+    }
+
+    function row(label, value) {
+      return '<div class="r"><span>' + label + '</span><span>' + (value || '-') + '</span></div>';
+    }
+
+    function initApprovePage() {
+      applyStaticText();
+      document.getElementById('approveApp').style.display = 'block';
+      callApi('api_getRequestDetail', [requestId, role]).then(function (res) {
+        if (!res.success) {
+          document.getElementById('detailCard').innerText = res.message;
+          return;
+        }
+        var d = res.data;
+        document.getElementById('detailCard').innerHTML =
+          row(T.labelRequestId, d.RequestID) +
+          row(T.labelEmployee, d.EmployeeName) +
+          row(T.labelDept, d.Department) +
+          row(T.labelType, d.LeaveTypeDisplay || d.LeaveType) +
+          row(T.labelDates, d.StartDate + T.to + d.EndDate) +
+          row(T.labelReason, d.Reason) +
+          row(T.labelStatus, d.StatusLabel || d.Status);
+      }).catch(function (err) { showApproveMsg(T.error + err, false); });
+    }
+
+    function showApproveMsg(text, ok) {
+      var el = document.getElementById('approveMsg');
+      el.style.display = 'block';
+      el.className = 'msgbox ' + (ok ? 'ok' : 'err');
+      el.innerText = text;
+    }
+
+    function decide(decision) {
+      var otp = document.getElementById('otp').value.trim();
+      if (!otp) { showApproveMsg(T.needPin, false); return; }
+      if (decision === 'reject' && !document.getElementById('comment').value.trim()) {
+        showApproveMsg(T.needComment, false); return;
+      }
+      callApi('api_approve', [requestId, role, otp, profile.userId, profile.displayName, decision, document.getElementById('comment').value])
+        .then(function (res) {
+          showApproveMsg(res.message, res.success);
+        }).catch(function (err) {
+          showApproveMsg(T.error + err, false);
+        });
+    }
+  </script>
+</body>
+</html>
