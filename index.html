@@ -41,10 +41,24 @@
       <option>ลาอื่นๆ</option>
     </select>
     <label>แผนก/ฝ่าย</label>
-    <input type="text" id="department" placeholder="เช่น ฝ่ายผลิต">
+    <select id="department">
+      <option value="ฝ่ายผลิต">ฝ่ายผลิต</option>
+      <option value="สำนักงาน">สำนักงาน</option>
+    </select>
     <label>วันที่เริ่มลา</label>
     <input type="date" id="startDate">
-    <label>วันที่สิ้นสุด</label>
+    <label style="display:flex;align-items:center;gap:8px;font-weight:normal;margin-top:14px;">
+      <input type="checkbox" id="halfDayToggle" style="width:auto;margin:0;" onchange="toggleHalfDay()">
+      ลาครึ่งวัน
+    </label>
+    <div id="halfDayWrap" style="display:none;">
+      <label>ช่วงเวลา</label>
+      <select id="halfDayPeriod">
+        <option value="AM">ครึ่งวันเช้า</option>
+        <option value="PM">ครึ่งวันบ่าย</option>
+      </select>
+    </div>
+    <label id="endDateLabel">วันที่สิ้นสุด</label>
     <input type="date" id="endDate">
     <label>เหตุผล</label>
     <textarea id="reason" rows="3" placeholder="ระบุเหตุผลการลา"></textarea>
@@ -56,21 +70,25 @@
   <div id="approveApp" style="display:none;">
     <h2 id="roleTitle">Approval</h2>
     <div class="card" id="detailCard"></div>
-    <label id="lblPin">Approval PIN</label>
-    <input type="text" id="otp" inputmode="numeric" placeholder="">
-    <div id="hintPin" style="font-size:12px;color:#999;margin-top:4px;"></div>
-    <label id="lblComment">Comment</label>
-    <textarea id="comment" rows="2"></textarea>
-    <div class="row-btns">
-      <button class="btn-approve" id="btnApprove" onclick="decide('approve')">Approve</button>
-      <button class="btn-reject" id="btnReject" onclick="decide('reject')">Reject</button>
+    <div id="actionArea">
+      <label id="lblPin">Approval PIN</label>
+      <input type="text" id="otp" inputmode="numeric" placeholder="">
+      <div id="hintPin" style="font-size:12px;color:#999;margin-top:4px;"></div>
+      <label id="lblComment">Comment</label>
+      <textarea id="comment" rows="2"></textarea>
+      <div class="row-btns">
+        <button class="btn-approve" id="btnApprove" onclick="decide('approve')">Approve</button>
+        <button class="btn-reject" id="btnReject" onclick="decide('reject')">Reject</button>
+      </div>
     </div>
     <div id="approveMsg" class="msgbox"></div>
   </div>
 
   <script>
     // ======================= ตั้งค่า =======================
+    // URL ของ Google Apps Script /exec ที่ deploy ไว้ (backend/ฐานข้อมูล) - ห้ามลบ /exec ท้าย
     var EXEC_URL = "https://script.google.com/macros/s/AKfycbwThIxxwTCdFaeSfgyOOdKKRr14dDz6pWhuTqvUqkkOqyF76Uvxb70iTbWII-wiRfzImA/exec";
+    // LIFF ID ของ LIFF app ที่ Endpoint URL ชี้มาที่หน้านี้ (ตั้งค่าใน LINE Developers > LIFF) - ต้องแก้เป็นของจริงก่อนใช้งาน
     var LIFF_ID = "2010670203-cILnaiQM";
 
     // ======================= Debug log (โชว์บนจอ) =======================
@@ -107,6 +125,9 @@
       lblComment: 'หมายเหตุ (กรณีไม่อนุมัติ กรุณาระบุเหตุผล)',
       btnApprove: 'อนุมัติ', btnReject: 'ไม่อนุมัติ',
       needPin: 'กรุณากรอกรหัสอนุมัติ', needComment: 'กรุณาระบุเหตุผลที่ไม่อนุมัติ',
+      confirmApprove: 'ยืนยันการอนุมัติคำขอนี้ใช่หรือไม่?',
+      confirmReject: 'ยืนยันการไม่อนุมัติคำขอนี้ใช่หรือไม่?',
+      alreadyProcessed: 'คำขอนี้ดำเนินการไปแล้ว สถานะปัจจุบัน: ',
       error: 'เกิดข้อผิดพลาด: ', dash: '-', to: ' ถึง '
     };
     var T_EN = {
@@ -118,6 +139,9 @@
       lblComment: 'Comment (required if rejecting)',
       btnApprove: 'Approve', btnReject: 'Reject',
       needPin: 'Please enter your approval PIN', needComment: 'Please provide a reason for rejecting',
+      confirmApprove: 'Confirm approval of this request?',
+      confirmReject: 'Confirm rejection of this request?',
+      alreadyProcessed: 'This request has already been processed. Current status: ',
       error: 'Error: ', dash: '-', to: ' to '
     };
 
@@ -165,9 +189,26 @@
       el.innerText = text;
     }
 
+    // สลับโหมด "ลาครึ่งวัน": ซ่อนช่องวันที่สิ้นสุด แล้วบังคับให้เท่ากับวันเริ่มลาเสมอ
+    function toggleHalfDay() {
+      var checked = document.getElementById('halfDayToggle').checked;
+      document.getElementById('halfDayWrap').style.display = checked ? 'block' : 'none';
+      document.getElementById('endDateLabel').style.display = checked ? 'none' : 'block';
+      document.getElementById('endDate').style.display = checked ? 'none' : 'block';
+      if (checked) {
+        document.getElementById('endDate').value = document.getElementById('startDate').value;
+      }
+    }
+    document.getElementById('startDate').addEventListener('change', function () {
+      if (document.getElementById('halfDayToggle').checked) {
+        document.getElementById('endDate').value = this.value;
+      }
+    });
+
     function submitForm() {
       var startDate = document.getElementById('startDate').value;
-      var endDate = document.getElementById('endDate').value;
+      var halfDayChecked = document.getElementById('halfDayToggle').checked;
+      var endDate = halfDayChecked ? startDate : document.getElementById('endDate').value;
       if (!startDate || !endDate) { showFormMsg('กรุณาเลือกวันที่ให้ครบถ้วน', false); return; }
 
       var data = {
@@ -177,6 +218,7 @@
         department: document.getElementById('department').value,
         startDate: startDate,
         endDate: endDate,
+        halfDay: halfDayChecked ? document.getElementById('halfDayPeriod').value : '',
         reason: document.getElementById('reason').value
       };
 
@@ -206,6 +248,14 @@
       return '<div class="r"><span>' + label + '</span><span>' + (value || '-') + '</span></div>';
     }
 
+    // แปลงวันที่จาก yyyy-MM-dd (หรือ ISO) เป็น DD-MM-YY สำหรับแสดงผล
+    function fmtDate(v) {
+      if (!v) return '';
+      var m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (!m) return v;
+      return m[3] + '-' + m[2] + '-' + m[1].slice(2);
+    }
+
     function initApprovePage() {
       applyStaticText();
       document.getElementById('approveApp').style.display = 'block';
@@ -220,9 +270,17 @@
           row(T.labelEmployee, d.EmployeeName) +
           row(T.labelDept, d.Department) +
           row(T.labelType, d.LeaveTypeDisplay || d.LeaveType) +
-          row(T.labelDates, d.StartDate + T.to + d.EndDate) +
+          row(T.labelDates, d.HalfDay
+            ? fmtDate(d.StartDate) + ' (' + d.HalfDayLabel + ')'
+            : fmtDate(d.StartDate) + T.to + fmtDate(d.EndDate)) +
           row(T.labelReason, d.Reason) +
           row(T.labelStatus, d.StatusLabel || d.Status);
+
+        // คำขอนี้ถูกดำเนินการไปแล้ว (อนุมัติ/ปฏิเสธไปแล้ว) - ซ่อนช่อง PIN/ปุ่ม แล้วโชว์สถานะแทน
+        if (!d.Actionable) {
+          document.getElementById('actionArea').style.display = 'none';
+          showApproveMsg(T.alreadyProcessed + (d.StatusLabel || d.Status), true);
+        }
       }).catch(function (err) { showApproveMsg(T.error + err, false); });
     }
 
@@ -239,9 +297,19 @@
       if (decision === 'reject' && !document.getElementById('comment').value.trim()) {
         showApproveMsg(T.needComment, false); return;
       }
+      // ยืนยันอีกครั้งก่อนส่งจริง (ทั้งกรณีอนุมัติและไม่อนุมัติ)
+      var confirmMsg = decision === 'approve' ? T.confirmApprove : T.confirmReject;
+      if (!window.confirm(confirmMsg)) return;
+
       callApi('api_approve', [requestId, role, otp, profile.userId, profile.displayName, decision, document.getElementById('comment').value])
         .then(function (res) {
           showApproveMsg(res.message, res.success);
+          if (res.success) {
+            window.alert(res.message);
+            if (typeof liff !== 'undefined' && liff.isInClient && liff.isInClient()) {
+              liff.closeWindow();
+            }
+          }
         }).catch(function (err) {
           showApproveMsg(T.error + err, false);
         });
