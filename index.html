@@ -151,6 +151,9 @@
     var role = params.get('role') || 'supervisor';
     var T = role === 'executive' ? T_EN : T_TH;
 
+    // เวอร์ชันโค้ด: เอาไว้เช็คว่าไฟล์ที่ GitHub เป็นเวอร์ชันล่าสุดจริงมั้ย (เทียบกับที่ผมส่งให้)
+    var CODE_VERSION = 'v3-antispam-2026-07-14';
+    __log('code version: ' + CODE_VERSION);
     __log('page started, LIFF_ID=' + LIFF_ID + ', mode=' + (requestId ? 'approve(' + role + ')' : 'form'));
 
     if (typeof liff === 'undefined') {
@@ -215,7 +218,7 @@
     }
 
     function submitForm() {
-      if (isSubmitting) return;
+      if (isSubmitting) { __log('submitForm blocked (already submitting)'); return; }
       var startDate = document.getElementById('startDate').value;
       var halfDayChecked = document.getElementById('halfDayToggle').checked;
       var endDate = halfDayChecked ? startDate : document.getElementById('endDate').value;
