@@ -62,7 +62,7 @@
     <input type="date" id="endDate">
     <label>เหตุผล</label>
     <textarea id="reason" rows="3" placeholder="ระบุเหตุผลการลา"></textarea>
-    <button class="btn-primary" onclick="submitForm()">ส่งคำขอลา</button>
+    <button class="btn-primary" id="submitBtn" onclick="submitForm()">ส่งคำขอลา</button>
     <div id="formMsg" class="msgbox"></div>
   </div>
 
@@ -205,7 +205,17 @@
       }
     });
 
+    // กันสแปม: ถ้ากำลังส่งคำขออยู่ ห้ามกดส่งซ้ำอีก
+    var isSubmitting = false;
+    function resetSubmitButton() {
+      isSubmitting = false;
+      var btn = document.getElementById('submitBtn');
+      btn.disabled = false;
+      btn.innerText = 'ส่งคำขอลา';
+    }
+
     function submitForm() {
+      if (isSubmitting) return;
       var startDate = document.getElementById('startDate').value;
       var halfDayChecked = document.getElementById('halfDayToggle').checked;
       var endDate = halfDayChecked ? startDate : document.getElementById('endDate').value;
@@ -222,13 +232,21 @@
         reason: document.getElementById('reason').value
       };
 
+      isSubmitting = true;
+      var btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      btn.innerText = 'กำลังส่ง...';
+
       callApi('api_submitLeave', [data]).then(function (res) {
+        resetSubmitButton();
         if (res.success) {
           showFormMsg('ส่งคำขอลาเรียบร้อยแล้ว เลขที่คำขอ ' + res.requestId + ' รอหัวหน้างานอนุมัติ', true);
+          window.alert('ส่งคำขอลางานแล้ว');
         } else {
           showFormMsg(res.message || 'เกิดข้อผิดพลาด', false);
         }
       }).catch(function (err) {
+        resetSubmitButton();
         showFormMsg('เกิดข้อผิดพลาด: ' + err, false);
       });
     }
