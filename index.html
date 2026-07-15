@@ -1,455 +1,900 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ระบบขอลา</title>
-<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-<style>
-  body { font-family: 'Sarabun', sans-serif; padding: 16px; max-width: 480px; margin: 0 auto; background:#f5f6f8; }
-  h2 { color:#06c755; }
-  label { display:block; margin-top: 14px; font-weight:bold; font-size:14px; }
-  input, select, textarea { width:100%; padding:10px; margin-top:6px; box-sizing:border-box; border:1px solid #ccc; border-radius:6px; font-size:15px; }
-  button { width:100%; padding:14px; margin-top:20px; border:none; border-radius:8px; font-size:16px; font-weight:bold; color:#fff; }
-  .btn-primary { background:#06c755; }
-  .btn-approve { background:#06c755; margin-right:4%; }
-  .btn-reject { background:#e0483e; }
-  .row-btns { display:flex; }
-  .row-btns button { width:48%; }
-  .msgbox { margin-top:14px; padding:10px; border-radius:6px; display:none; }
-  .ok { background:#e6f7ea; color:#1a7a34; }
-  .err { background:#fdecea; color:#b3261e; }
-  #loading { text-align:center; padding: 40px 0; white-space:pre-wrap; }
-  .card { background:#fff; border-radius:8px; padding:16px; margin-top:10px; box-shadow:0 1px 4px rgba(0,0,0,.1); }
-  .card .r { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #eee; font-size:14px; }
-  #debugPanel { white-space: pre-wrap; word-break: break-all; font-family: monospace; font-size: 11px; background:#111; color:#0f0; padding:10px; border-radius:6px; margin-top:14px; max-height:35vh; overflow:auto; }
-</style>
-</head>
-<body>
-  <div id="loading">กำลังโหลด...</div>
-  <div id="debugPanel"></div>
+/**
+ * ระบบขอลา-อนุมัติผ่าน LINE Bot (LINE OA + Google Apps Script + Google Sheets + LIFF)
+ * ไม่ต้องใช้ Python เลย ทุกอย่างเป็น JavaScript ฝั่ง Google Apps Script (ฟรี 100%)
+ *
+ * โครงสร้างระบบ:
+ *   - พนักงานพิมพ์ "ลา" คุยกับ LINE Bot -> เปิดฟอร์ม LIFF (Index.html) ยื่นคำขอ
+ *   - ระบบส่งข้อความแจ้งเตือนเข้ากลุ่ม LINE ของหัวหน้างาน พร้อมลิงก์เปิดหน้าอนุมัติ (Approve.html)
+ *   - หัวหน้างานกดลิงก์ -> ใส่ "รหัสอนุมัติของหัวหน้างาน" (PIN คงที่ ตั้งได้ที่หน้า Settings) -> อนุมัติ/ไม่อนุมัติ
+ *   - ถ้าอนุมัติ ระบบจะส่งแจ้งเตือนต่อไปยังกลุ่มผู้บริหาร ให้กดลิงก์ + ใส่ "รหัสอนุมัติของผู้บริหาร"
+ *   - ผู้บริหาร/HR/IT เข้าดูรายงานและจัดการข้อมูลทั้งหมดผ่าน Admin.html (ต้องใส่รหัสผ่านผู้ดูแลระบบ)
+ *
+ * ก่อนใช้งานต้องตั้งค่า Script Properties อย่างน้อย 1 ครั้ง (Project Settings > Script Properties)
+ * หรือจะตั้งผ่านหน้า Admin.html (แท็บ Settings) ก็ได้หลัง deploy แล้ว:
+ *   LINE_CHANNEL_ACCESS_TOKEN, MANAGER_GROUP_ID, DIRECTOR_GROUP_ID, LIFF_ID,
+ *   ADMIN_PASSWORD, MANAGER_PIN, DIRECTOR_PIN, SICK_DAYS_POLICY, PERSONAL_DAYS_POLICY
+ *
+ * รันฟังก์ชัน initializeSheets() หนึ่งครั้งจากตัวแก้ไข Apps Script ก่อนใช้งานจริง
+ */
 
-  <!-- ฟอร์มยื่นคำขอลา (พนักงาน) -->
-  <div id="formApp" style="display:none;">
-    <h2>ยื่นคำขอลางาน</h2>
-    <div id="who"></div>
-    <label>ประเภทการลา</label>
-    <select id="leaveType" onchange="onLeaveTypeChange()">
-      <option value="ลาป่วย">ลาป่วย</option>
-      <option value="ลากิจ">ลากิจ</option>
-      <option value="ลาพักร้อน">ลาพักร้อน</option>
-      <option value="ลาไม่รับค่าจ้าง">ลาไม่รับค่าจ้าง</option>
-      <option value="ลาอื่นๆ">ลาอื่นๆ</option>
-    </select>
-    <div id="leaveTypeHint" style="font-size:12px;color:#999;margin-top:6px;"></div>
+var SHEET_LEAVE = 'LeaveRequests';
+var HEADERS_LEAVE = ['RequestID', 'Timestamp', 'EmployeeUserId', 'EmployeeName', 'Department',
+  'LeaveType', 'StartDate', 'EndDate', 'Reason', 'Status',
+  'SupervisorApprovedBy', 'SupervisorApprovedAt', 'ExecApprovedBy', 'ExecApprovedAt', 'Comment', 'HalfDay',
+  'EmployeeNicknameEN', 'AttachmentUrl'];
 
-    <div id="photoWrap" style="display:none;">
-      <label>แนบรูปภาพ (จำเป็นสำหรับการลาป่วย)</label>
-      <input type="file" accept="image/*" id="sickPhoto" onchange="onPhotoSelected()">
-      <div id="photoPreviewWrap" style="margin-top:8px; display:none;">
-        <img id="photoPreview" style="max-width:100%; border-radius:6px;">
-      </div>
-    </div>
+var SHEET_EMP = 'Employees';
+var HEADERS_EMP = ['EmployeeID', 'Name', 'Position', 'Department', 'Phone', 'LineUserId', 'VacationDays', 'NicknameEN'];
 
-    <label>วันที่เริ่มลา</label>
-    <input type="date" id="startDate">
-    <label style="display:flex;align-items:center;gap:8px;font-weight:normal;margin-top:14px;">
-      <input type="checkbox" id="halfDayToggle" style="width:auto;margin:0;" onchange="toggleHalfDay()">
-      ลาครึ่งวัน
-    </label>
-    <div id="halfDayWrap" style="display:none;">
-      <label>ช่วงเวลา</label>
-      <select id="halfDayPeriod">
-        <option value="AM">ครึ่งวันเช้า</option>
-        <option value="PM">ครึ่งวันบ่าย</option>
-      </select>
-    </div>
-    <label id="endDateLabel">วันที่สิ้นสุด</label>
-    <input type="date" id="endDate">
-    <label>เหตุผล</label>
-    <textarea id="reason" rows="3" placeholder="ระบุเหตุผลการลา"></textarea>
-    <button class="btn-primary" id="submitBtn" onclick="submitForm()">ส่งคำขอลา</button>
-    <div id="formMsg" class="msgbox"></div>
-  </div>
+// อีเมลที่จะรับไฟล์สำรองข้อมูลประจำปี (วันที่ 15 มกราคมของทุกปี)
+var BACKUP_EMAIL_RECIPIENTS = ['Accounting@frenchbakerysolutions.com', 'Order@frenchbakerysolutions.com'];
 
-  <!-- หน้าอนุมัติ (หัวหน้างาน/ผู้บริหาร) -->
-  <div id="approveApp" style="display:none;">
-    <h2 id="roleTitle">Approval</h2>
-    <div class="card" id="detailCard"></div>
-    <div id="actionArea">
-      <label id="lblPin">Approval PIN</label>
-      <input type="text" id="otp" inputmode="numeric" placeholder="">
-      <div id="hintPin" style="font-size:12px;color:#999;margin-top:4px;"></div>
-      <label id="lblComment">Comment</label>
-      <textarea id="comment" rows="2"></textarea>
-      <div class="row-btns">
-        <button class="btn-approve" id="btnApprove" onclick="decide('approve')">Approve</button>
-        <button class="btn-reject" id="btnReject" onclick="decide('reject')">Reject</button>
-      </div>
-    </div>
-    <div id="approveMsg" class="msgbox"></div>
-  </div>
+// โฟลเดอร์ Google Drive ที่จะเก็บรูปภาพแนบของการลาป่วย (จะสร้างอัตโนมัติถ้ายังไม่มี)
+var ATTACHMENT_FOLDER_NAME = 'LeaveAttachments';
 
-  <script>
-    // ======================= ตั้งค่า =======================
-    // URL ของ Google Apps Script /exec ที่ deploy ไว้ (backend/ฐานข้อมูล) - ห้ามลบ /exec ท้าย
-    var EXEC_URL = "https://script.google.com/macros/s/AKfycbwThIxxwTCdFaeSfgyOOdKKRr14dDz6pWhuTqvUqkkOqyF76Uvxb70iTbWII-wiRfzImA/exec";
-    // LIFF ID ของ LIFF app ที่ Endpoint URL ชี้มาที่หน้านี้ (ตั้งค่าใน LINE Developers > LIFF) - ต้องแก้เป็นของจริงก่อนใช้งาน
-    var LIFF_ID = "2010670203-cILnaiQM";
+var SHEET_APP = 'Approvers';
+var HEADERS_APP = ['ApproverID', 'Name', 'Position', 'Role', 'LineUserId'];
 
-    // ======================= Debug log (โชว์บนจอ) =======================
-    window.__dbg = [];
-    function __log(msg) {
-      window.__dbg.push('[' + new Date().toTimeString().slice(0, 8) + '] ' + msg);
-      var el = document.getElementById('debugPanel');
-      if (el) el.textContent = window.__dbg.join('\n');
-    }
-    window.onerror = function (msg, url, line) { __log('window.onerror: ' + msg + ' @ ' + line); };
-    window.addEventListener('unhandledrejection', function (e) {
-      __log('unhandledrejection: ' + (e.reason && e.reason.message ? e.reason.message : e.reason));
-    });
+var STATUS = {
+  PENDING_SUPERVISOR: 'PENDING_SUPERVISOR',
+  PENDING_EXECUTIVE: 'PENDING_EXECUTIVE',
+  APPROVED: 'APPROVED',
+  REJECTED_BY_SUPERVISOR: 'REJECTED_BY_SUPERVISOR',
+  REJECTED_BY_EXECUTIVE: 'REJECTED_BY_EXECUTIVE'
+};
 
-    // ======================= เรียก Apps Script ผ่าน fetch (POST) =======================
-    // ใช้ POST + Content-Type: text/plain (เป็น "simple request" ไม่ต้องผ่าน CORS preflight)
-    // เปลี่ยนจาก GET มาเป็น POST เพื่อรองรับ payload ขนาดใหญ่ เช่น รูปภาพแนบลาป่วย
-    function callApi(fn, args) {
-      __log('API call: ' + fn);
-      return fetch(EXEC_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ api: 1, fn: fn, payload: args || [] })
-      }).then(function (res) {
-        return res.json();
-      }).catch(function (err) {
-        __log('API FAILED: ' + fn + ' -> ' + err);
-        throw err;
-      });
-    }
+var STATUS_LABEL_TH = {
+  PENDING_SUPERVISOR: 'รอหัวหน้างานอนุมัติ',
+  PENDING_EXECUTIVE: 'รอผู้บริหารอนุมัติ',
+  APPROVED: 'อนุมัติแล้ว',
+  REJECTED_BY_SUPERVISOR: 'ไม่อนุมัติ (หัวหน้างาน)',
+  REJECTED_BY_EXECUTIVE: 'ไม่อนุมัติ (ผู้บริหาร)'
+};
 
-    // ======================= ข้อความ 2 ภาษา สำหรับหน้าอนุมัติ =======================
-    var T_TH = {
-      roleTitleSupervisor: 'หน้าอนุมัติ (หัวหน้างาน)', roleTitleExecutive: 'หน้าอนุมัติ (ผู้บริหาร)',
-      labelRequestId: 'เลขที่คำขอ', labelEmployee: 'พนักงาน', labelDept: 'แผนก',
-      labelType: 'ประเภทการลา', labelDates: 'วันที่', labelReason: 'เหตุผล', labelStatus: 'สถานะปัจจุบัน',
-      lblPin: 'กรอกรหัสอนุมัติของคุณ (PIN)', pinPlaceholder: 'ใส่รหัส PIN ของคุณ',
-      hintPin: 'รหัสนี้เป็นรหัสประจำตัวหัวหน้างาน/ผู้บริหาร ตั้งและแก้ไขได้ที่หน้า Admin > Settings',
-      lblComment: 'หมายเหตุ (กรณีไม่อนุมัติ กรุณาระบุเหตุผล)',
-      btnApprove: 'อนุมัติ', btnReject: 'ไม่อนุมัติ',
-      needPin: 'กรุณากรอกรหัสอนุมัติ', needComment: 'กรุณาระบุเหตุผลที่ไม่อนุมัติ',
-      confirmApprove: 'ยืนยันการอนุมัติคำขอนี้ใช่หรือไม่?',
-      confirmReject: 'ยืนยันการไม่อนุมัติคำขอนี้ใช่หรือไม่?',
-      alreadyProcessed: 'คำขอนี้ดำเนินการไปแล้ว สถานะปัจจุบัน: ',
-      viewAttachment: 'ดูรูปภาพแนบ',
-      error: 'เกิดข้อผิดพลาด: ', dash: '-', to: ' ถึง '
-    };
-    var T_EN = {
-      roleTitleSupervisor: 'Approval Page (Supervisor)', roleTitleExecutive: 'Approval Page (Executive)',
-      labelRequestId: 'Request ID', labelEmployee: 'Employee', labelDept: 'Department',
-      labelType: 'Leave Type', labelDates: 'Dates', labelReason: 'Reason', labelStatus: 'Current Status',
-      lblPin: 'Enter your Approval PIN', pinPlaceholder: 'Enter your PIN',
-      hintPin: 'This is your personal Executive approval PIN. It can be set/changed on the Admin > Settings page.',
-      lblComment: 'Comment (required if rejecting)',
-      btnApprove: 'Approve', btnReject: 'Reject',
-      needPin: 'Please enter your approval PIN', needComment: 'Please provide a reason for rejecting',
-      confirmApprove: 'Confirm approval of this request?',
-      confirmReject: 'Confirm rejection of this request?',
-      alreadyProcessed: 'This request has already been processed. Current status: ',
-      viewAttachment: 'View attached photo',
-      error: 'Error: ', dash: '-', to: ' to '
-    };
+// ใช้เฉพาะฝั่งผู้บริหาร (English UI) ตามที่ขอ — หัวหน้างานยังใช้ STATUS_LABEL_TH เหมือนเดิม
+var STATUS_LABEL_EN = {
+  PENDING_SUPERVISOR: 'Awaiting Supervisor Approval',
+  PENDING_EXECUTIVE: 'Awaiting Executive Approval',
+  APPROVED: 'Approved',
+  REJECTED_BY_SUPERVISOR: 'Rejected (Supervisor)',
+  REJECTED_BY_EXECUTIVE: 'Rejected (Executive)'
+};
 
-    var profile = null;
-    var params = new URLSearchParams(location.search);
-    var requestId = params.get('id');
-    var role = params.get('role') || 'supervisor';
-    var T = role === 'executive' ? T_EN : T_TH;
+// แปลงชื่อประเภทการลา (ที่พนักงานกรอกเป็นภาษาไทยจากฟอร์ม) เป็นภาษาอังกฤษ สำหรับข้อความ/หน้าเว็บฝั่งผู้บริหาร
+var LEAVE_TYPE_EN = {
+  'ลาป่วย': 'Sick Leave',
+  'ลากิจ': 'Personal Leave',
+  'ลาพักร้อน': 'Vacation Leave',
+  'ลาไม่รับค่าจ้าง': 'Leave Without Pay',
+  'ลาอื่นๆ': 'Other Leave'
+};
+function leaveTypeEn_(th) { return LEAVE_TYPE_EN[th] || th; }
 
-    // เวอร์ชันโค้ด: เอาไว้เช็คว่าไฟล์ที่ GitHub เป็นเวอร์ชันล่าสุดจริงมั้ย (เทียบกับที่ผมส่งให้)
-    var CODE_VERSION = 'v4-photo-post-rules-2026-07-15';
-    __log('code version: ' + CODE_VERSION);
-    __log('page started, LIFF_ID=' + LIFF_ID + ', mode=' + (requestId ? 'approve(' + role + ')' : 'form'));
+// แผนก: มีแค่ 2 ค่าคงที่ในระบบ ต้องสะกดตรงนี้ให้ตรงกับที่ใช้ทุกจุด (Employees sheet, ฟอร์ม, การกำหนดเส้นทางอนุมัติ)
+var DEPT_PRODUCTION = 'ฝ่ายผลิต';
+var DEPT_OFFICE = 'สำนักงาน';
+var DEPT_EN = { 'ฝ่ายผลิต': 'Production', 'สำนักงาน': 'Office' };
+function deptEn_(th) { return DEPT_EN[th] || th || '-'; }
+// รองรับกรณีในชีต Employees พิมพ์แผนกเป็นภาษาอังกฤษ/ตัวพิมพ์ใหญ่ (เช่น "OFFICE", "Production") ไม่ใช่แค่ภาษาไทย
+function isOfficeDept_(v) {
+  if (!v) return false;
+  var s = String(v).trim().toLowerCase();
+  return s === 'office' || s === 'สำนักงาน';
+}
 
-    if (typeof liff === 'undefined') {
-      document.getElementById('loading').innerText = 'ไม่พบไลบรารี LIFF กรุณาลองใหม่';
+// ลาครึ่งวัน: เก็บในชีตเป็นรหัส 'AM' (เช้า) หรือ 'PM' (บ่าย) หรือว่างถ้าไม่ใช่ลาครึ่งวัน
+var HALF_DAY_TH = { AM: 'ครึ่งวันเช้า', PM: 'ครึ่งวันบ่าย' };
+var HALF_DAY_EN = { AM: 'Morning Half-day', PM: 'Afternoon Half-day' };
+function halfDayLabel_(code, lang) {
+  if (!code) return '';
+  var map = lang === 'en' ? HALF_DAY_EN : HALF_DAY_TH;
+  return map[code] || '';
+}
+
+/* ========================= ตั้งค่าเริ่มต้น ========================= */
+
+// รันฟังก์ชันนี้ "ครั้งเดียว" จากตัวแก้ไข Apps Script (เลือกฟังก์ชันนี้แล้วกด Run) เพื่อเตรียมชีต+ค่าเริ่มต้นให้อัตโนมัติ
+function initializeSheets() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  ensureSheet_(ss, SHEET_LEAVE, HEADERS_LEAVE);
+  ensureSheet_(ss, SHEET_EMP, HEADERS_EMP);
+  ensureSheet_(ss, SHEET_APP, HEADERS_APP);
+
+  var props = PropertiesService.getScriptProperties();
+  var defaults = {
+    ADMIN_PASSWORD: 'changeme1234',
+    MANAGER_PIN: '1234',
+    DIRECTOR_PIN: '1122',
+    SICK_DAYS_POLICY: '30',
+    PERSONAL_DAYS_POLICY: '3',
+    NOTIFY_EMPLOYEE_ON_SUBMIT: 'false'
+  };
+  Object.keys(defaults).forEach(function (key) {
+    if (!props.getProperty(key)) props.setProperty(key, defaults[key]);
+  });
+  Logger.log('เตรียมระบบเรียบร้อยแล้ว! รหัสผ่านผู้ดูแลระบบเริ่มต้นคือ changeme1234 กรุณาไปเปลี่ยนที่หน้า Admin > Settings ทันที');
+}
+
+function ensureSheet_(ss, name, headers) {
+  var sheet = ss.getSheetByName(name);
+  if (!sheet) sheet = ss.insertSheet(name);
+  var firstRow = sheet.getRange(1, 1, 1, headers.length).getValues()[0];
+  if (firstRow.join('') === '') {
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+function getSheet_(name, headers) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(name);
+  if (!sheet) throw new Error('ไม่พบชีต ' + name + ' กรุณารันฟังก์ชัน initializeSheets() ก่อน');
+  return sheet;
+}
+
+function getProp_(key) {
+  return PropertiesService.getScriptProperties().getProperty(key);
+}
+function setProp_(key, value) {
+  PropertiesService.getScriptProperties().setProperty(key, value);
+}
+
+/* ========================= Web App entry points ========================= */
+
+// รายชื่อฟังก์ชันที่อนุญาตให้เรียกผ่าน API ภายนอก (จากหน้า GitHub Pages) เพื่อความปลอดภัย
+// ห้ามเพิ่มฟังก์ชันของ Admin เข้าไปในนี้เด็ดขาด (Admin.html ยังเรียกผ่าน google.script.run ตามเดิม อยู่บน Apps Script)
+var ALLOWED_API_FUNCTIONS = ['api_submitLeave', 'api_getRequestDetail', 'api_approve'];
+
+function callApiFunction_(fn, args) {
+  switch (fn) {
+    case 'api_submitLeave': return api_submitLeave.apply(null, args);
+    case 'api_getRequestDetail': return api_getRequestDetail.apply(null, args);
+    case 'api_approve': return api_approve.apply(null, args);
+    default: return { success: false, message: 'Unknown function: ' + fn };
+  }
+}
+
+// เรียกจากหน้าเว็บภายนอก (GitHub Pages) ผ่าน fetch() แบบ GET เท่านั้น
+// รูปแบบ: {EXEC_URL}?api=1&fn=api_submitLeave&payload=<JSON array ของ argument เข้ารหัส URL>
+function handleApiCall_(fn, payloadStr) {
+  var result;
+  try {
+    if (ALLOWED_API_FUNCTIONS.indexOf(fn) === -1) {
+      result = { success: false, message: 'Function not allowed: ' + fn };
     } else {
-      liff.init({ liffId: LIFF_ID }).then(function () {
-        __log('liff.init success, isInClient=' + liff.isInClient());
-        if (!liff.isLoggedIn()) { liff.login(); return; }
-        return liff.getProfile();
-      }).then(function (p) {
-        if (!p) return;
-        profile = p;
-        __log('profile ok: ' + p.displayName);
-        document.getElementById('loading').style.display = 'none';
-        if (requestId) {
-          initApprovePage();
-        } else {
-          initFormPage();
-        }
-      }).catch(function (err) {
-        __log('LIFF ERROR: ' + (err && err.message));
-        document.getElementById('loading').innerText = 'เกิดข้อผิดพลาดในการเชื่อมต่อ LINE: ' + (err && err.message ? err.message : err);
+      var args = payloadStr ? JSON.parse(payloadStr) : [];
+      if (Object.prototype.toString.call(args) !== '[object Array]') args = [args];
+      result = callApiFunction_(fn, args);
+    }
+  } catch (err) {
+    result = { success: false, message: 'API error: ' + err };
+  }
+  return ContentService.createTextOutput(JSON.stringify(result))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doGet(e) {
+  var p = (e && e.parameter) || {};
+  if (p.api === '1' && p.fn) {
+    return handleApiCall_(p.fn, p.payload);
+  }
+  var page = p.page || 'form';
+  var template;
+  if (page === 'approve') {
+    template = HtmlService.createTemplateFromFile('Approve');
+  } else if (page === 'admin') {
+    template = HtmlService.createTemplateFromFile('Admin');
+  } else {
+    template = HtmlService.createTemplateFromFile('Index');
+  }
+  template.liffId = getProp_('LIFF_ID') || '';
+  return template.evaluate()
+    .setTitle('ระบบขอลา')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+// รับ 2 อย่าง: (1) Webhook จาก LINE (2) เรียก API จากหน้า GitHub Pages ผ่าน fetch() แบบ POST
+// (เปลี่ยนมาใช้ POST แทน GET เพื่อรองรับ payload ขนาดใหญ่ เช่น รูปภาพแนบลาป่วย ที่ยัดใน query string แบบ GET ไม่ได้)
+function doPost(e) {
+  try {
+    var body = JSON.parse(e.postData.contents);
+    if (body.events) {
+      body.events.forEach(function (event) { handleLineEvent_(event); });
+      return ContentService.createTextOutput(JSON.stringify({ status: 'ok' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    if (body.api === 1 && body.fn) {
+      return handleApiCall_(body.fn, JSON.stringify(body.payload || []));
+    }
+  } catch (err) {
+    Logger.log('doPost error: ' + err);
+  }
+  return ContentService.createTextOutput(JSON.stringify({ status: 'ok' }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function handleLineEvent_(event) {
+  if (event.type !== 'message' || event.message.type !== 'text') return;
+  var text = event.message.text || '';
+  var replyToken = event.replyToken;
+  var liffId = getProp_('LIFF_ID');
+  var formUrl = 'https://liff.line.me/' + liffId;
+  if (text.indexOf('ลา') > -1) {
+    var message = {
+      type: 'template',
+      altText: 'ยื่นคำขอลางาน',
+      template: {
+        type: 'buttons',
+        text: 'กดปุ่มด้านล่างเพื่อยื่นคำขอลางาน',
+        actions: [{ type: 'uri', label: 'ยื่นคำขอลางาน', uri: formUrl }]
+      }
+    };
+    sendLineReply_(replyToken, [message]);
+  } else {
+    sendLineReply_(replyToken, [{ type: 'text', text: 'พิมพ์คำว่า "ลา" เพื่อเปิดฟอร์มขอลางานครับ/ค่ะ' }]);
+  }
+}
+
+/* ========================= LINE Messaging API ========================= */
+
+function sendLineReply_(replyToken, messages) {
+  callLineApi_('https://api.line.me/v2/bot/message/reply', { replyToken: replyToken, messages: messages });
+}
+function sendLinePush_(to, messages) {
+  if (!to) return;
+  callLineApi_('https://api.line.me/v2/bot/message/push', { to: to, messages: messages });
+}
+function callLineApi_(url, payload) {
+  var token = getProp_('LINE_CHANNEL_ACCESS_TOKEN');
+  if (!token) { Logger.log('ยังไม่ได้ตั้งค่า LINE_CHANNEL_ACCESS_TOKEN'); return; }
+  var options = {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { Authorization: 'Bearer ' + token },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+  var res = UrlFetchApp.fetch(url, options);
+  if (res.getResponseCode() >= 300) Logger.log('LINE API error: ' + res.getContentText());
+}
+
+function buildApproveButtonMessage_(titleText, detailLines, liffUrl, pinHint, lang) {
+  lang = lang || 'th';
+  var text = titleText + '\n' + detailLines.join('\n') + '\n\n' + pinHint;
+  var altText = lang === 'en' ? 'Tap to approve or reject' : 'กดเพื่ออนุมัติ/ไม่อนุมัติ';
+  var promptText = lang === 'en' ? 'Tap the button below to open the approval page' : 'กดปุ่มเพื่อเปิดหน้าอนุมัติ';
+  var buttonLabel = lang === 'en' ? 'Open Approval Page' : 'เปิดหน้าอนุมัติ';
+  return [
+    { type: 'text', text: text },
+    {
+      type: 'template',
+      altText: altText,
+      template: {
+        type: 'buttons',
+        text: promptText,
+        actions: [{ type: 'uri', label: buttonLabel, uri: liffUrl }]
+      }
+    }
+  ];
+}
+
+/* ========================= Helper ========================= */
+
+function genRequestId_() {
+  var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  var s = '';
+  for (var i = 0; i < 8; i++) s += chars.charAt(Math.floor(Math.random() * chars.length));
+  return 'L-' + s;
+}
+function genId_(prefix) {
+  return prefix + new Date().getTime() + Math.floor(Math.random() * 1000);
+}
+function findRow_(sheet, idColName, headers, idValue) {
+  var data = sheet.getDataRange().getValues();
+  var idIdx = headers.indexOf(idColName);
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][idIdx]) === String(idValue)) return { rowIndex: i + 1, row: data[i] };
+  }
+  return null;
+}
+function rowToObject_(row, headers) {
+  var obj = {};
+  headers.forEach(function (h, idx) { obj[h] = row[idx]; });
+  return obj;
+}
+function dateStr_(v) {
+  if (!v) return '';
+  if (Object.prototype.toString.call(v) === '[object Date]') {
+    return Utilities.formatDate(v, 'Asia/Bangkok', 'yyyy-MM-dd');
+  }
+  return String(v);
+}
+function daysBetween_(start, end) {
+  var s = new Date(start), e = new Date(end);
+  return Math.round((e - s) / (1000 * 60 * 60 * 24)) + 1;
+}
+
+// แปลงวันที่ (Date object หรือ yyyy-MM-dd) เป็น DD-MM-YY สำหรับใส่ในข้อความ LINE
+function fmtDateDMY_(v) {
+  var s = dateStr_(v);
+  var m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return s;
+  return m[3] + '-' + m[2] + '-' + m[1].slice(2);
+}
+
+// สร้างบรรทัดวันที่สำหรับข้อความ LINE (DD-MM-YY) — ลาวันเดียวโชว์วันเดียว, ลาครึ่งวันโชว์วันเดียว+ช่วงเวลา, ลาหลายวันโชว์ช่วง
+function buildDateLine_(startDate, endDate, halfDay, lang) {
+  var isEn = lang === 'en';
+  var s = dateStr_(startDate);
+  var e = dateStr_(endDate);
+  var labelDate = isEn ? 'Date: ' : 'วันที่: ';
+  var labelDates = isEn ? 'Dates: ' : 'ตั้งแต่: ';
+  var to = isEn ? ' to ' : ' ถึง ';
+  if (halfDay) {
+    return labelDate + fmtDateDMY_(s) + ' (' + halfDayLabel_(halfDay, lang) + ')';
+  }
+  if (s === e) {
+    return labelDate + fmtDateDMY_(s);
+  }
+  return labelDates + fmtDateDMY_(s) + to + fmtDateDMY_(e);
+}
+
+function checkAdmin_(password) {
+  return String(password) === String(getProp_('ADMIN_PASSWORD'));
+}
+
+// ค้นหาข้อมูลพนักงานจากทะเบียนพนักงาน (ชีต Employees) ด้วย LINE User ID
+// ใช้เพื่อ auto-detect แผนก (Production/Office) และชื่อเล่นภาษาอังกฤษ โดยพนักงานไม่ต้องกรอกเอง
+function findEmployeeByLineId_(lineUserId) {
+  if (!lineUserId) return null;
+  var sheet = getSheet_(SHEET_EMP);
+  var data = sheet.getDataRange().getValues();
+  var idx = HEADERS_EMP.indexOf('LineUserId');
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][idx] && String(data[i][idx]) === String(lineUserId)) {
+      return rowToObject_(data[i], HEADERS_EMP);
+    }
+  }
+  return null;
+}
+
+// นับจำนวนพนักงานฝ่ายผลิตที่ "อนุมัติแล้ว" ซึ่งมีวันลาทับซ้อนกับช่วงวันที่ระบุ (ไม่นับคำขอตัวเอง)
+// คืนค่าจำนวนสูงสุดที่พบในวันใดวันหนึ่งของช่วงนั้น (เผื่อกรณีลาหลายวัน)
+function countApprovedProductionOverlap_(startDate, endDate, excludeRequestId) {
+  var sheet = getSheet_(SHEET_LEAVE);
+  var data = sheet.getDataRange().getValues();
+  var idIdx = HEADERS_LEAVE.indexOf('RequestID');
+  var deptIdx = HEADERS_LEAVE.indexOf('Department');
+  var statusIdx = HEADERS_LEAVE.indexOf('Status');
+  var startIdx = HEADERS_LEAVE.indexOf('StartDate');
+  var endIdx = HEADERS_LEAVE.indexOf('EndDate');
+
+  var rows = [];
+  for (var i = 1; i < data.length; i++) {
+    if (excludeRequestId && String(data[i][idIdx]) === String(excludeRequestId)) continue;
+    if (data[i][deptIdx] !== DEPT_PRODUCTION) continue;
+    if (data[i][statusIdx] !== STATUS.APPROVED) continue;
+    rows.push({ start: dateStr_(data[i][startIdx]), end: dateStr_(data[i][endIdx]) });
+  }
+  if (!rows.length) return 0;
+
+  var maxCount = 0;
+  var d = new Date(startDate);
+  var last = new Date(endDate);
+  while (d <= last) {
+    var dStr = Utilities.formatDate(d, 'Asia/Bangkok', 'yyyy-MM-dd');
+    var count = 0;
+    rows.forEach(function (r) {
+      if (r.start && r.end && r.start <= dStr && dStr <= r.end) count++;
+    });
+    if (count > maxCount) maxCount = count;
+    d.setDate(d.getDate() + 1);
+  }
+  return maxCount;
+}
+
+/* ========================= API: ยื่นคำขอลา (พนักงาน ผ่าน LIFF) ========================= */
+
+// อัปโหลดรูปภาพแนบ (base64) ขึ้น Google Drive แล้วคืนลิงก์ดูรูป
+function uploadAttachment_(base64Data, mimeType, requestId) {
+  var folders = DriveApp.getFoldersByName(ATTACHMENT_FOLDER_NAME);
+  var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(ATTACHMENT_FOLDER_NAME);
+  var decoded = Utilities.base64Decode(base64Data);
+  var blob = Utilities.newBlob(decoded, mimeType || 'image/jpeg', requestId + '.jpg');
+  var file = folder.createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return file.getUrl();
+}
+
+function api_submitLeave(data) {
+  try {
+    if (!data.userId || !data.leaveType || !data.startDate || !data.endDate) {
+      return { success: false, message: 'กรุณากรอกข้อมูลให้ครบถ้วน' };
+    }
+
+    var todayStr = Utilities.formatDate(new Date(), 'Asia/Bangkok', 'yyyy-MM-dd');
+    var tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    var tomorrowStr = Utilities.formatDate(tomorrow, 'Asia/Bangkok', 'yyyy-MM-dd');
+
+    // ลาป่วย: บังคับแนบรูป แต่ลาย้อนหลังได้ไม่จำกัด / ลาไม่รับค่าจ้าง: ไม่มีข้อจำกัดใดๆ
+    // ลากิจ, ลาพักร้อน, ลาอื่นๆ: ต้องแจ้งล่วงหน้าอย่างน้อย 1 วัน (วันเริ่มลาต้องเป็นพรุ่งนี้เป็นต้นไป)
+    if (data.leaveType === 'ลาป่วย') {
+      if (!data.photoBase64) {
+        return { success: false, message: 'กรุณาแนบรูปภาพสำหรับการลาป่วย' };
+      }
+    } else if (data.leaveType !== 'ลาไม่รับค่าจ้าง') {
+      if (data.startDate < tomorrowStr) {
+        return { success: false, message: 'ลากิจ/ลาพักร้อน/ลาอื่นๆ ต้องแจ้งล่วงหน้าอย่างน้อย 1 วัน (เลือกวันที่พรุ่งนี้เป็นต้นไป)' };
+      }
+    }
+
+    // ลาครึ่งวัน: ต้องเป็น 'AM' หรือ 'PM' เท่านั้น และบังคับให้วันสิ้นสุด = วันเริ่มลาเสมอ
+    var halfDay = (data.halfDay === 'AM' || data.halfDay === 'PM') ? data.halfDay : '';
+    var endDate = halfDay ? data.startDate : data.endDate;
+
+    // ค้นหาข้อมูลพนักงานจาก LINE ID เพื่อ auto-detect แผนกและชื่อเล่นภาษาอังกฤษ (พนักงานไม่ต้องกรอกแผนกเอง)
+    var emp = findEmployeeByLineId_(data.userId);
+    var department = (emp && isOfficeDept_(emp.Department)) ? DEPT_OFFICE : DEPT_PRODUCTION;
+    var nicknameEN = (emp && emp.NicknameEN) ? emp.NicknameEN : '';
+    // แผนก "สำนักงาน" ข้ามขั้นหัวหน้างาน ส่งตรงไปให้ผู้บริหาร (CEO) อนุมัติเลย
+    var skipSupervisor = (department === DEPT_OFFICE);
+    var initialStatus = skipSupervisor ? STATUS.PENDING_EXECUTIVE : STATUS.PENDING_SUPERVISOR;
+
+    var sheet = getSheet_(SHEET_LEAVE);
+    var requestId = genRequestId_();
+
+    var attachmentUrl = '';
+    if (data.photoBase64) {
+      try {
+        attachmentUrl = uploadAttachment_(data.photoBase64, data.photoMimeType, requestId);
+      } catch (upErr) {
+        Logger.log('uploadAttachment_ error: ' + upErr);
+      }
+    }
+
+    sheet.appendRow([
+      requestId, new Date(), data.userId, data.displayName || '', department,
+      data.leaveType, data.startDate, endDate, data.reason || '',
+      initialStatus, '', '', '', '', '', halfDay, nicknameEN, attachmentUrl
+    ]);
+
+    var liffId = getProp_('LIFF_ID');
+    var attachLineEn = attachmentUrl ? ('Attached photo: ' + attachmentUrl) : '';
+    var attachLineTh = attachmentUrl ? ('รูปแนบ: ' + attachmentUrl) : '';
+
+    if (skipSupervisor) {
+      var approveUrlExec = 'https://liff.line.me/' + liffId + '?id=' + requestId + '&role=executive';
+      var execDateLine = buildDateLine_(data.startDate, endDate, halfDay, 'en');
+      var execDetailLines = [
+        'Employee: ' + (nicknameEN || data.displayName || '-'),
+        'Department: ' + deptEn_(department),
+        'Leave type: ' + leaveTypeEn_(data.leaveType),
+        execDateLine,
+        'Reason: ' + (data.reason || '-')
+      ];
+      if (attachLineEn) execDetailLines.push(attachLineEn);
+      var execMessages = buildApproveButtonMessage_('New leave request - Awaiting Executive Approval', execDetailLines, approveUrlExec,
+        'Please tap the link below and enter your Executive approval PIN to proceed.', 'en');
+      sendLinePush_(getProp_('DIRECTOR_GROUP_ID'), execMessages);
+    } else {
+      var approveUrl = 'https://liff.line.me/' + liffId + '?id=' + requestId + '&role=supervisor';
+      var dateLine = buildDateLine_(data.startDate, endDate, halfDay, 'th');
+      var detailLines = [
+        'พนักงาน: ' + (data.displayName || '-'),
+        'แผนก: ' + department,
+        'ประเภทการลา: ' + data.leaveType,
+        dateLine,
+        'เหตุผล: ' + (data.reason || '-')
+      ];
+      if (attachLineTh) detailLines.push(attachLineTh);
+      var messages = buildApproveButtonMessage_('มีคำขอลาใหม่ รอหัวหน้างานอนุมัติ', detailLines, approveUrl,
+        'กรุณากดลิงก์ด้านล่างแล้วใส่ "รหัสอนุมัติหัวหน้างาน" เพื่อดำเนินการ');
+      sendLinePush_(getProp_('MANAGER_GROUP_ID'), messages);
+    }
+
+    if (getProp_('NOTIFY_EMPLOYEE_ON_SUBMIT') === 'true' && data.userId) {
+      var waitWho = skipSupervisor ? 'ผู้บริหาร' : 'หัวหน้างาน';
+      sendLinePush_(data.userId, [{ type: 'text', text: 'ส่งคำขอลาเรียบร้อยแล้ว รอ' + waitWho + 'อนุมัติ (เลขที่คำขอ ' + requestId + ')' }]);
+    }
+    return { success: true, requestId: requestId };
+  } catch (err) {
+    return { success: false, message: 'เกิดข้อผิดพลาด: ' + err };
+  }
+}
+
+/* ========================= API: หน้าอนุมัติ (หัวหน้างาน/ผู้บริหาร ผ่าน LIFF) ========================= */
+
+// role: 'supervisor' (ไทย, ค่าเริ่มต้น) หรือ 'executive' (อังกฤษ)
+function api_getRequestDetail(requestId, role) {
+  var sheet = getSheet_(SHEET_LEAVE);
+  var found = findRow_(sheet, 'RequestID', HEADERS_LEAVE, requestId);
+  if (!found) return { success: false, message: role === 'executive' ? 'Request not found' : 'ไม่พบคำขอนี้' };
+  var obj = rowToObject_(found.row, HEADERS_LEAVE);
+  obj.StartDate = dateStr_(obj.StartDate);
+  obj.EndDate = dateStr_(obj.EndDate);
+  obj.Timestamp = dateStr_(obj.Timestamp);
+  obj.HalfDayLabel = halfDayLabel_(obj.HalfDay, role === 'executive' ? 'en' : 'th');
+  // ยังดำเนินการได้อยู่มั้ย (ยังไม่ถูกอนุมัติ/ปฏิเสธไปแล้วในขั้นของ role นี้)
+  obj.Actionable = (role === 'executive')
+    ? (obj.Status === STATUS.PENDING_EXECUTIVE)
+    : (obj.Status === STATUS.PENDING_SUPERVISOR);
+  if (role === 'executive') {
+    obj.StatusLabel = STATUS_LABEL_EN[obj.Status] || obj.Status;
+    obj.LeaveTypeDisplay = leaveTypeEn_(obj.LeaveType);
+    obj.DepartmentDisplay = deptEn_(obj.Department);
+    obj.EmployeeDisplay = obj.EmployeeNicknameEN || obj.EmployeeName;
+  } else {
+    obj.StatusLabel = STATUS_LABEL_TH[obj.Status] || obj.Status;
+    obj.LeaveTypeDisplay = obj.LeaveType;
+    obj.DepartmentDisplay = obj.Department;
+    obj.EmployeeDisplay = obj.EmployeeName;
+  }
+
+  // แจ้งเตือนก่อนอนุมัติ: วันที่ขอลานี้ ฝ่ายผลิตมีคนลาไปแล้ว (อนุมัติแล้ว) กี่คน ถ้า 2 คนขึ้นไปให้เตือน
+  if (obj.StartDate && obj.EndDate) {
+    var overlapCount = countApprovedProductionOverlap_(obj.StartDate, obj.EndDate, obj.RequestID);
+    if (overlapCount >= 2) {
+      obj.OverlapWarning = (role === 'executive')
+        ? ('Note: ' + overlapCount + ' Production employees already have approved leave on this date.')
+        : ('วันดังกล่าว มีพนักงานลาไปแล้ว ' + overlapCount + ' คน');
+    }
+  }
+
+  return { success: true, data: obj };
+}
+
+// role: 'supervisor' หรือ 'executive', pin = รหัสคงที่ของหัวหน้างาน/ผู้บริหาร (ตั้งค่าที่ Admin > Settings)
+function api_approve(requestId, role, pin, approverUserId, approverName, decision, comment) {
+  var sheet = getSheet_(SHEET_LEAVE);
+  var found = findRow_(sheet, 'RequestID', HEADERS_LEAVE, requestId);
+  if (!found) return { success: false, message: 'ไม่พบคำขอนี้' };
+  var rowIndex = found.rowIndex;
+  var obj = rowToObject_(found.row, HEADERS_LEAVE);
+  var col = function (name) { return HEADERS_LEAVE.indexOf(name) + 1; };
+
+  if (role === 'supervisor') {
+    if (obj.Status !== STATUS.PENDING_SUPERVISOR) {
+      return { success: false, message: 'คำขอนี้ถูกดำเนินการไปแล้ว (สถานะปัจจุบัน: ' + (STATUS_LABEL_TH[obj.Status] || obj.Status) + ')' };
+    }
+    if (String(pin) !== String(getProp_('MANAGER_PIN'))) {
+      return { success: false, message: 'รหัสอนุมัติของหัวหน้างานไม่ถูกต้อง' };
+    }
+    if (decision === 'approve') {
+      sheet.getRange(rowIndex, col('Status')).setValue(STATUS.PENDING_EXECUTIVE);
+      sheet.getRange(rowIndex, col('SupervisorApprovedBy')).setValue(approverName);
+      sheet.getRange(rowIndex, col('SupervisorApprovedAt')).setValue(new Date());
+
+      var liffId = getProp_('LIFF_ID');
+      var approveUrl = 'https://liff.line.me/' + liffId + '?id=' + requestId + '&role=executive';
+      // ข้อความถึงกลุ่มผู้บริหารเป็นภาษาอังกฤษทั้งหมด ตามที่กำหนด (ฝั่งหัวหน้างานยังเป็นไทยเหมือนเดิม)
+      var execDateLine = buildDateLine_(obj.StartDate, obj.EndDate, obj.HalfDay, 'en');
+      var detailLines = [
+        'Employee: ' + (obj.EmployeeNicknameEN || obj.EmployeeName),
+        'Department: ' + deptEn_(obj.Department),
+        'Leave type: ' + leaveTypeEn_(obj.LeaveType),
+        execDateLine,
+        'Approved by supervisor: ' + approverName
+      ];
+      if (obj.AttachmentUrl) detailLines.push('Attached photo: ' + obj.AttachmentUrl);
+      var messages = buildApproveButtonMessage_('Awaiting final approval from Executive', detailLines, approveUrl,
+        'Please tap the link below and enter your Executive approval PIN to proceed.', 'en');
+      sendLinePush_(getProp_('DIRECTOR_GROUP_ID'), messages);
+      sendLinePush_(obj.EmployeeUserId, [{ type: 'text', text: 'หัวหน้างานอนุมัติคำขอลาแล้ว รอเจ้านายพิจารณา' }]);
+      return { success: true, message: 'อนุมัติชั้นหัวหน้างานเรียบร้อย ส่งต่อให้ผู้บริหารแล้ว' };
+    } else {
+      sheet.getRange(rowIndex, col('Status')).setValue(STATUS.REJECTED_BY_SUPERVISOR);
+      sheet.getRange(rowIndex, col('SupervisorApprovedBy')).setValue(approverName);
+      sheet.getRange(rowIndex, col('SupervisorApprovedAt')).setValue(new Date());
+      sheet.getRange(rowIndex, col('Comment')).setValue(comment || '');
+      sendLinePush_(obj.EmployeeUserId, [{ type: 'text', text: 'คำขอลาของคุณถูกปฏิเสธโดยหัวหน้างาน\nเหตุผล: ' + (comment || '-') }]);
+      return { success: true, message: 'บันทึกการไม่อนุมัติเรียบร้อย' };
+    }
+  }
+
+  // ฝั่งผู้บริหาร: หน้าเว็บและข้อความทั้งหมดเป็นภาษาอังกฤษ ตามที่กำหนด
+  if (role === 'executive') {
+    if (obj.Status !== STATUS.PENDING_EXECUTIVE) {
+      return { success: false, message: 'This request has already been processed (current status: ' + (STATUS_LABEL_EN[obj.Status] || obj.Status) + ')' };
+    }
+    if (String(pin) !== String(getProp_('DIRECTOR_PIN'))) {
+      return { success: false, message: 'Incorrect Executive approval PIN' };
+    }
+    if (decision === 'approve') {
+      sheet.getRange(rowIndex, col('Status')).setValue(STATUS.APPROVED);
+      sheet.getRange(rowIndex, col('ExecApprovedBy')).setValue(approverName);
+      sheet.getRange(rowIndex, col('ExecApprovedAt')).setValue(new Date());
+      sendLinePush_(obj.EmployeeUserId, [{ type: 'text', text: 'คำขอลาของคุณได้รับการอนุมัติเรียบร้อยแล้ว' }]);
+      return { success: true, message: 'Final approval recorded successfully' };
+    } else {
+      sheet.getRange(rowIndex, col('Status')).setValue(STATUS.REJECTED_BY_EXECUTIVE);
+      sheet.getRange(rowIndex, col('ExecApprovedBy')).setValue(approverName);
+      sheet.getRange(rowIndex, col('ExecApprovedAt')).setValue(new Date());
+      sheet.getRange(rowIndex, col('Comment')).setValue(comment || '');
+      sendLinePush_(obj.EmployeeUserId, [{ type: 'text', text: 'คำขอลาของคุณถูกปฏิเสธโดยผู้บริหาร\nเหตุผล: ' + (comment || '-') }]);
+      return { success: true, message: 'Rejection recorded successfully' };
+    }
+  }
+  return { success: false, message: 'Invalid role' };
+}
+
+/* ========================= API: Admin panel (ผู้บริหาร/HR/IT) ========================= */
+// ทุกฟังก์ชันด้านล่างต้องแนบ password (รหัสผ่านผู้ดูแลระบบ) และระบบจะตรวจสอบซ้ำฝั่ง server เสมอ
+
+function api_adminLogin(password) {
+  return { success: checkAdmin_(password) };
+}
+
+function api_getDashboardData(password) {
+  if (!checkAdmin_(password)) return { success: false, message: 'รหัสผ่านไม่ถูกต้อง' };
+  var sheet = getSheet_(SHEET_LEAVE);
+  var data = sheet.getDataRange().getValues();
+  var rows = [];
+  for (var i = 1; i < data.length; i++) rows.push(rowToObject_(data[i], HEADERS_LEAVE));
+  rows.forEach(function (r) {
+    r.StartDate = dateStr_(r.StartDate);
+    r.EndDate = dateStr_(r.EndDate);
+    r.SupervisorApprovedAt = dateStr_(r.SupervisorApprovedAt);
+    r.ExecApprovedAt = dateStr_(r.ExecApprovedAt);
+    r.Timestamp = dateStr_(r.Timestamp);
+    r.StatusLabel = STATUS_LABEL_TH[r.Status] || r.Status;
+    r.HalfDayLabel = halfDayLabel_(r.HalfDay, 'th');
+  });
+
+  var summary = { total: rows.length, pendingSupervisor: 0, pendingExecutive: 0, approved: 0, rejected: 0 };
+  var byType = {};
+  var daysByEmployee = {};
+  rows.forEach(function (r) {
+    if (r.Status === STATUS.PENDING_SUPERVISOR) summary.pendingSupervisor++;
+    else if (r.Status === STATUS.PENDING_EXECUTIVE) summary.pendingExecutive++;
+    else if (r.Status === STATUS.APPROVED) summary.approved++;
+    else if (r.Status === STATUS.REJECTED_BY_SUPERVISOR || r.Status === STATUS.REJECTED_BY_EXECUTIVE) summary.rejected++;
+
+    byType[r.LeaveType] = (byType[r.LeaveType] || 0) + 1;
+
+    if (r.Status === STATUS.APPROVED && r.StartDate && r.EndDate) {
+      var d = r.HalfDay ? 0.5 : daysBetween_(r.StartDate, r.EndDate);
+      daysByEmployee[r.EmployeeName] = (daysByEmployee[r.EmployeeName] || 0) + d;
+    }
+  });
+
+  var topEmployees = Object.keys(daysByEmployee).map(function (name) {
+    return { name: name, days: daysByEmployee[name] };
+  }).sort(function (a, b) { return b.days - a.days; }).slice(0, 5);
+
+  var activity = [];
+  rows.forEach(function (r) {
+    if (r.Timestamp) activity.push({ time: r.Timestamp, text: r.EmployeeName + ' ยื่นคำขอลา (' + r.LeaveType + ')', color: '#1B6CA8' });
+    if (r.SupervisorApprovedAt) {
+      var isRej = r.Status === STATUS.REJECTED_BY_SUPERVISOR;
+      activity.push({ time: r.SupervisorApprovedAt, text: 'หัวหน้างาน ' + (isRej ? 'ไม่อนุมัติ' : 'อนุมัติ') + 'คำขอของ ' + r.EmployeeName, color: isRej ? '#9B2626' : '#E8A000' });
+    }
+    if (r.ExecApprovedAt) {
+      var isRej2 = r.Status === STATUS.REJECTED_BY_EXECUTIVE;
+      activity.push({ time: r.ExecApprovedAt, text: 'ผู้บริหาร ' + (isRej2 ? 'ไม่อนุมัติ' : 'อนุมัติ') + 'คำขอของ ' + r.EmployeeName, color: isRej2 ? '#9B2626' : '#2D7A3A' });
+    }
+  });
+  activity.sort(function (a, b) { return a.time < b.time ? 1 : -1; });
+
+  return { success: true, rows: rows, summary: summary, byType: byType, topEmployees: topEmployees, activity: activity.slice(0, 10) };
+}
+
+function api_updateLeaveRequest(password, requestId, fields) {
+  if (!checkAdmin_(password)) return { success: false, message: 'รหัสผ่านไม่ถูกต้อง' };
+  var sheet = getSheet_(SHEET_LEAVE);
+  var found = findRow_(sheet, 'RequestID', HEADERS_LEAVE, requestId);
+  if (!found) return { success: false, message: 'ไม่พบคำขอนี้' };
+  Object.keys(fields).forEach(function (key) {
+    var idx = HEADERS_LEAVE.indexOf(key);
+    if (idx > -1) sheet.getRange(found.rowIndex, idx + 1).setValue(fields[key]);
+  });
+  return { success: true, message: 'บันทึกการแก้ไขเรียบร้อย' };
+}
+
+function api_addLeaveRequest(password, data) {
+  if (!checkAdmin_(password)) return { success: false, message: 'รหัสผ่านไม่ถูกต้อง' };
+  var sheet = getSheet_(SHEET_LEAVE);
+  var requestId = genRequestId_();
+  sheet.appendRow([
+    requestId, new Date(), data.employeeUserId || '', data.employeeName || '', data.department || '',
+    data.leaveType, data.startDate, data.endDate, data.reason || '',
+    data.status || STATUS.APPROVED, '', '', '', '', ''
+  ]);
+  return { success: true, requestId: requestId };
+}
+
+function api_deleteLeaveRequest(password, requestId) {
+  if (!checkAdmin_(password)) return { success: false, message: 'รหัสผ่านไม่ถูกต้อง' };
+  var sheet = getSheet_(SHEET_LEAVE);
+  var found = findRow_(sheet, 'RequestID', HEADERS_LEAVE, requestId);
+  if (!found) return { success: false, message: 'ไม่พบคำขอนี้' };
+  sheet.deleteRow(found.rowIndex);
+  return { success: true };
+}
+
+/* ---- พนักงาน (Employees) ---- */
+
+function api_getEmployees(password) {
+  if (!checkAdmin_(password)) return { success: false, message: 'รหัสผ่านไม่ถูกต้อง' };
+  var sheet = getSheet_(SHEET_EMP);
+  var data = sheet.getDataRange().getValues();
+  var rows = [];
+  for (var i = 1; i < data.length; i++) rows.push(rowToObject_(data[i], HEADERS_EMP));
+  return { success: true, rows: rows };
+}
+
+function api_saveEmployee(password, emp) {
+  if (!checkAdmin_(password)) return { success: false, message: 'รหัสผ่านไม่ถูกต้อง' };
+  var sheet = getSheet_(SHEET_EMP);
+  if (emp.EmployeeID) {
+    var found = findRow_(sheet, 'EmployeeID', HEADERS_EMP, emp.EmployeeID);
+    if (found) {
+      HEADERS_EMP.forEach(function (h, idx) {
+        if (h !== 'EmployeeID') sheet.getRange(found.rowIndex, idx + 1).setValue(emp[h] || '');
       });
+      return { success: true };
     }
+  }
+  var id = genId_('E');
+  sheet.appendRow([id, emp.Name, emp.Position, emp.Department, emp.Phone, emp.LineUserId, emp.VacationDays || 10, emp.NicknameEN || '']);
+  return { success: true, id: id };
+}
 
-    // ======================= หน้าฟอร์มยื่นคำขอลา =======================
-    function initFormPage() {
-      document.getElementById('formApp').style.display = 'block';
-      document.getElementById('who').innerText = 'ผู้ยื่นคำขอ: ' + profile.displayName;
-      onLeaveTypeChange(); // ตั้งค่าเริ่มต้นให้ตรงกับประเภทการลาที่เลือกอยู่ตอนโหลดหน้า
-    }
+function api_deleteEmployee(password, id) {
+  if (!checkAdmin_(password)) return { success: false, message: 'รหัสผ่านไม่ถูกต้อง' };
+  var sheet = getSheet_(SHEET_EMP);
+  var found = findRow_(sheet, 'EmployeeID', HEADERS_EMP, id);
+  if (found) sheet.deleteRow(found.rowIndex);
+  return { success: true };
+}
 
-    // เงื่อนไขแต่ละประเภทการลา:
-    //  - ลาป่วย: ต้องแนบรูป, ลาย้อนหลังได้ไม่จำกัด
-    //  - ลาไม่รับค่าจ้าง: ไม่มีข้อจำกัดใดๆ กดวันไหนก็ได้
-    //  - ลากิจ/ลาพักร้อน/ลาอื่นๆ: ต้องแจ้งล่วงหน้าอย่างน้อย 1 วัน (เลือกได้ตั้งแต่พรุ่งนี้เป็นต้นไป)
-    function onLeaveTypeChange() {
-      var lt = document.getElementById('leaveType').value;
-      var startInput = document.getElementById('startDate');
-      var hint = document.getElementById('leaveTypeHint');
+/* ---- ผู้อนุมัติ (Approvers) ---- */
 
-      if (lt === 'ลาป่วย' || lt === 'ลาไม่รับค่าจ้าง') {
-        startInput.removeAttribute('min');
-      } else {
-        var tmr = new Date();
-        tmr.setDate(tmr.getDate() + 1);
-        var mm = String(tmr.getMonth() + 1).padStart(2, '0');
-        var dd = String(tmr.getDate()).padStart(2, '0');
-        startInput.setAttribute('min', tmr.getFullYear() + '-' + mm + '-' + dd);
-      }
+function api_getApprovers(password) {
+  if (!checkAdmin_(password)) return { success: false, message: 'รหัสผ่านไม่ถูกต้อง' };
+  var sheet = getSheet_(SHEET_APP);
+  var data = sheet.getDataRange().getValues();
+  var rows = [];
+  for (var i = 1; i < data.length; i++) rows.push(rowToObject_(data[i], HEADERS_APP));
+  return { success: true, rows: rows };
+}
 
-      if (lt === 'ลาป่วย') {
-        hint.innerText = 'ลาป่วยต้องแนบรูปภาพ และสามารถลาย้อนหลังได้';
-      } else if (lt === 'ลาไม่รับค่าจ้าง') {
-        hint.innerText = 'ลาไม่รับค่าจ้าง เลือกวันที่ได้อิสระ ไม่มีข้อจำกัด';
-      } else {
-        hint.innerText = 'ต้องแจ้งล่วงหน้าอย่างน้อย 1 วัน (เลือกวันที่พรุ่งนี้เป็นต้นไป)';
-      }
-
-      document.getElementById('photoWrap').style.display = (lt === 'ลาป่วย') ? 'block' : 'none';
-    }
-
-    // ======================= แนบรูปภาพลาป่วย (ย่อขนาด + บีบอัดก่อนส่ง กันไฟล์ใหญ่เกินไป) =======================
-    var photoDataUrl = '';
-    function readAndCompressImage(file) {
-      return new Promise(function (resolve, reject) {
-        var reader = new FileReader();
-        reader.onload = function (e) {
-          var img = new Image();
-          img.onload = function () {
-            var maxDim = 1000;
-            var w = img.width, h = img.height;
-            if (w > maxDim || h > maxDim) {
-              if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
-              else { w = Math.round(w * maxDim / h); h = maxDim; }
-            }
-            var canvas = document.createElement('canvas');
-            canvas.width = w; canvas.height = h;
-            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-            resolve(canvas.toDataURL('image/jpeg', 0.7));
-          };
-          img.onerror = reject;
-          img.src = e.target.result;
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
+function api_saveApprover(password, ap) {
+  if (!checkAdmin_(password)) return { success: false, message: 'รหัสผ่านไม่ถูกต้อง' };
+  var sheet = getSheet_(SHEET_APP);
+  if (ap.ApproverID) {
+    var found = findRow_(sheet, 'ApproverID', HEADERS_APP, ap.ApproverID);
+    if (found) {
+      HEADERS_APP.forEach(function (h, idx) {
+        if (h !== 'ApproverID') sheet.getRange(found.rowIndex, idx + 1).setValue(ap[h] || '');
       });
+      return { success: true };
     }
-    function onPhotoSelected() {
-      var file = document.getElementById('sickPhoto').files[0];
-      if (!file) { photoDataUrl = ''; return; }
-      __log('compressing photo...');
-      readAndCompressImage(file).then(function (dataUrl) {
-        photoDataUrl = dataUrl;
-        document.getElementById('photoPreview').src = dataUrl;
-        document.getElementById('photoPreviewWrap').style.display = 'block';
-        __log('photo ready, ~' + Math.round(dataUrl.length / 1024) + 'KB');
-      }).catch(function (err) {
-        __log('photo compress error: ' + err);
-        showFormMsg('แนบรูปไม่สำเร็จ กรุณาลองใหม่', false);
-      });
-    }
+  }
+  var id = genId_('A');
+  sheet.appendRow([id, ap.Name, ap.Position, ap.Role, ap.LineUserId]);
+  return { success: true, id: id };
+}
 
-    function showFormMsg(text, ok) {
-      var el = document.getElementById('formMsg');
-      el.style.display = 'block';
-      el.className = 'msgbox ' + (ok ? 'ok' : 'err');
-      el.innerText = text;
-    }
+function api_deleteApprover(password, id) {
+  if (!checkAdmin_(password)) return { success: false, message: 'รหัสผ่านไม่ถูกต้อง' };
+  var sheet = getSheet_(SHEET_APP);
+  var found = findRow_(sheet, 'ApproverID', HEADERS_APP, id);
+  if (found) sheet.deleteRow(found.rowIndex);
+  return { success: true };
+}
 
-    // สลับโหมด "ลาครึ่งวัน": ซ่อนช่องวันที่สิ้นสุด แล้วบังคับให้เท่ากับวันเริ่มลาเสมอ
-    function toggleHalfDay() {
-      var checked = document.getElementById('halfDayToggle').checked;
-      document.getElementById('halfDayWrap').style.display = checked ? 'block' : 'none';
-      document.getElementById('endDateLabel').style.display = checked ? 'none' : 'block';
-      document.getElementById('endDate').style.display = checked ? 'none' : 'block';
-      if (checked) {
-        document.getElementById('endDate').value = document.getElementById('startDate').value;
-      }
+/* ---- รหัสอนุมัติ (PIN), นโยบายวันลา, ตั้งค่า LINE, รหัสผ่านผู้ดูแลระบบ ---- */
+
+function api_getSettings(password) {
+  if (!checkAdmin_(password)) return { success: false, message: 'รหัสผ่านไม่ถูกต้อง' };
+  var token = getProp_('LINE_CHANNEL_ACCESS_TOKEN') || '';
+  return {
+    success: true,
+    sickDays: getProp_('SICK_DAYS_POLICY') || '30',
+    personalDays: getProp_('PERSONAL_DAYS_POLICY') || '3',
+    managerGroupId: getProp_('MANAGER_GROUP_ID') || '',
+    directorGroupId: getProp_('DIRECTOR_GROUP_ID') || '',
+    liffId: getProp_('LIFF_ID') || '',
+    tokenMasked: token ? ('••••••••' + token.slice(-4)) : ''
+  };
+}
+
+function api_changePin(password, role, currentPin, newPin) {
+  if (!checkAdmin_(password)) return { success: false, message: 'รหัสผ่านไม่ถูกต้อง' };
+  var key = role === 'director' ? 'DIRECTOR_PIN' : 'MANAGER_PIN';
+  if (String(currentPin) !== String(getProp_(key))) return { success: false, message: 'รหัสเดิมไม่ถูกต้อง' };
+  if (!newPin || String(newPin).length < 4) return { success: false, message: 'รหัสใหม่ต้องมีอย่างน้อย 4 หลัก' };
+  setProp_(key, String(newPin));
+  return { success: true };
+}
+
+function api_saveLeavePolicy(password, sickDays, personalDays) {
+  if (!checkAdmin_(password)) return { success: false, message: 'รหัสผ่านไม่ถูกต้อง' };
+  setProp_('SICK_DAYS_POLICY', String(sickDays));
+  setProp_('PERSONAL_DAYS_POLICY', String(personalDays));
+  return { success: true };
+}
+
+function api_saveLineConfig(password, token, managerGroupId, directorGroupId, liffId) {
+  if (!checkAdmin_(password)) return { success: false, message: 'รหัสผ่านไม่ถูกต้อง' };
+  if (token) setProp_('LINE_CHANNEL_ACCESS_TOKEN', token);
+  setProp_('MANAGER_GROUP_ID', managerGroupId || '');
+  setProp_('DIRECTOR_GROUP_ID', directorGroupId || '');
+  if (liffId) setProp_('LIFF_ID', liffId);
+  return { success: true };
+}
+
+function api_changeAdminPassword(password, newPassword) {
+  if (!checkAdmin_(password)) return { success: false, message: 'รหัสผ่านไม่ถูกต้อง' };
+  if (!newPassword || newPassword.length < 6) return { success: false, message: 'รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร' };
+  setProp_('ADMIN_PASSWORD', newPassword);
+  return { success: true };
+}
+
+/* ========================= สำรองข้อมูลประจำปี + ล้างข้อมูลวันลา (ทุกวันที่ 15 มกราคม) ========================= */
+// Apps Script ไม่มีทริกเกอร์แบบ "รายปี" ตรงๆ จึงใช้ทริกเกอร์ "รายวัน" ที่เช็คทุกวันแทน
+// แล้วจะทำงานจริงเฉพาะวันที่ตรงกับ 15 มกราคมเท่านั้น
+//
+// วิธีติดตั้ง (ทำครั้งเดียว): เปิด Apps Script editor > เลือกฟังก์ชัน installDailyTrigger_ จาก dropdown ด้านบน > กด Run
+// (ครั้งแรกจะมีหน้าต่างขอสิทธิ์การใช้งาน Drive/Gmail เพิ่มเติม กด Allow ได้เลย)
+function installDailyTrigger_() {
+  // ลบทริกเกอร์เดิมของฟังก์ชันนี้ก่อน กันเผื่อรันซ้ำแล้วมี trigger ซ้อนกันหลายอัน
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'dailyCheckAnnualBackup_') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('dailyCheckAnnualBackup_')
+    .timeBased()
+    .everyDays(1)
+    .atHour(1) // รันช่วงตี 1-2 (เวลาของบัญชี Google ที่ผูกกับสคริปต์)
+    .inTimezone('Asia/Bangkok')
+    .create();
+  Logger.log('ติดตั้งทริกเกอร์รายวันเรียบร้อยแล้ว (จะเช็คทุกวัน แล้วทำงานจริงเฉพาะ 15 ม.ค.)');
+}
+
+function dailyCheckAnnualBackup_() {
+  var today = new Date();
+  var mm = today.getMonth() + 1;
+  var dd = today.getDate();
+  if (mm === 1 && dd === 15) {
+    backupAndClearLeaveData_();
+  }
+}
+
+// สำรองทั้งไฟล์ Google Sheets เป็น .xlsx ส่งอีเมลไปหาบัญชี/ฝ่ายสั่งซื้อ แล้วค่อยล้างข้อมูลคำขอลาทั้งหมด (เก็บแค่หัวตาราง)
+function backupAndClearLeaveData_() {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var url = 'https://docs.google.com/spreadsheets/d/' + ss.getId() + '/export?format=xlsx';
+    var token = ScriptApp.getOAuthToken();
+    var response = UrlFetchApp.fetch(url, {
+      headers: { Authorization: 'Bearer ' + token },
+      muteHttpExceptions: true
+    });
+    if (response.getResponseCode() !== 200) {
+      Logger.log('Export xlsx failed: HTTP ' + response.getResponseCode());
+      return;
     }
-    document.getElementById('startDate').addEventListener('change', function () {
-      if (document.getElementById('halfDayToggle').checked) {
-        document.getElementById('endDate').value = this.value;
-      }
+    var dateLabel = Utilities.formatDate(new Date(), 'Asia/Bangkok', 'yyyy-MM-dd');
+    var blob = response.getBlob().setName('LeaveBackup_' + dateLabel + '.xlsx');
+
+    MailApp.sendEmail({
+      to: BACKUP_EMAIL_RECIPIENTS.join(','),
+      subject: 'Leave System Annual Backup - ' + dateLabel,
+      body: 'สำรองข้อมูลระบบขอลาประจำปี (' + dateLabel + ') แนบไฟล์ .xlsx มาด้วยแล้ว หลังจากนี้ระบบจะล้างข้อมูลคำขอลาในชีต LeaveRequests เพื่อเริ่มปีใหม่\n\nThis is an automated annual backup of the leave management system. The attached .xlsx file contains a full copy of all sheets. The LeaveRequests sheet will be cleared after this email is sent.',
+      attachments: [blob]
     });
 
-    // กันสแปม: ถ้ากำลังส่งคำขออยู่ ห้ามกดส่งซ้ำอีก
-    var isSubmitting = false;
-    function resetSubmitButton() {
-      isSubmitting = false;
-      var btn = document.getElementById('submitBtn');
-      btn.disabled = false;
-      btn.innerText = 'ส่งคำขอลา';
+    // ล้างข้อมูลคำขอลาทั้งหมด (เก็บแถวหัวตารางไว้) หลังจากส่งอีเมลสำรองสำเร็จแล้วเท่านั้น
+    var sheet = getSheet_(SHEET_LEAVE);
+    var lastRow = sheet.getLastRow();
+    if (lastRow > 1) {
+      sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).clearContent();
     }
-
-    function submitForm() {
-      if (isSubmitting) { __log('submitForm blocked (already submitting)'); return; }
-      var leaveType = document.getElementById('leaveType').value;
-      var startDate = document.getElementById('startDate').value;
-      var halfDayChecked = document.getElementById('halfDayToggle').checked;
-      var endDate = halfDayChecked ? startDate : document.getElementById('endDate').value;
-      if (!startDate || !endDate) { showFormMsg('กรุณาเลือกวันที่ให้ครบถ้วน', false); return; }
-      if (leaveType === 'ลาป่วย' && !photoDataUrl) { showFormMsg('กรุณาแนบรูปภาพสำหรับการลาป่วย', false); return; }
-
-      var data = {
-        userId: profile.userId,
-        displayName: profile.displayName,
-        leaveType: leaveType,
-        startDate: startDate,
-        endDate: endDate,
-        halfDay: halfDayChecked ? document.getElementById('halfDayPeriod').value : '',
-        reason: document.getElementById('reason').value
-      };
-      if (leaveType === 'ลาป่วย' && photoDataUrl) {
-        var m = photoDataUrl.match(/^data:(.*?);base64,(.*)$/);
-        if (m) { data.photoMimeType = m[1]; data.photoBase64 = m[2]; }
-      }
-
-      isSubmitting = true;
-      var btn = document.getElementById('submitBtn');
-      btn.disabled = true;
-      btn.innerText = 'กำลังส่ง...';
-
-      callApi('api_submitLeave', [data]).then(function (res) {
-        resetSubmitButton();
-        if (res.success) {
-          showFormMsg('ส่งคำขอลาเรียบร้อยแล้ว เลขที่คำขอ ' + res.requestId + ' รอหัวหน้างานอนุมัติ', true);
-          window.alert('ส่งคำขอลางานแล้ว');
-          photoDataUrl = '';
-          document.getElementById('sickPhoto').value = '';
-          document.getElementById('photoPreviewWrap').style.display = 'none';
-        } else {
-          showFormMsg(res.message || 'เกิดข้อผิดพลาด', false);
-        }
-      }).catch(function (err) {
-        resetSubmitButton();
-        showFormMsg('เกิดข้อผิดพลาด: ' + err, false);
-      });
-    }
-
-    // ======================= หน้าอนุมัติ =======================
-    function applyStaticText() {
-      document.getElementById('roleTitle').innerText = role === 'executive' ? T.roleTitleExecutive : T.roleTitleSupervisor;
-      document.getElementById('lblPin').innerText = T.lblPin;
-      document.getElementById('otp').placeholder = T.pinPlaceholder;
-      document.getElementById('hintPin').innerText = T.hintPin;
-      document.getElementById('lblComment').innerText = T.lblComment;
-      document.getElementById('btnApprove').innerText = T.btnApprove;
-      document.getElementById('btnReject').innerText = T.btnReject;
-    }
-
-    function row(label, value) {
-      return '<div class="r"><span>' + label + '</span><span>' + (value || '-') + '</span></div>';
-    }
-
-    // แปลงวันที่จาก yyyy-MM-dd (หรือ ISO) เป็น DD-MM-YY สำหรับแสดงผล
-    function fmtDate(v) {
-      if (!v) return '';
-      var m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})/);
-      if (!m) return v;
-      return m[3] + '-' + m[2] + '-' + m[1].slice(2);
-    }
-
-    var currentOverlapWarning = '';
-
-    function initApprovePage() {
-      applyStaticText();
-      document.getElementById('approveApp').style.display = 'block';
-      callApi('api_getRequestDetail', [requestId, role]).then(function (res) {
-        if (!res.success) {
-          document.getElementById('detailCard').innerText = res.message;
-          return;
-        }
-        var d = res.data;
-        var card = document.getElementById('detailCard');
-        card.innerHTML =
-          row(T.labelRequestId, d.RequestID) +
-          row(T.labelEmployee, d.EmployeeDisplay || d.EmployeeName) +
-          row(T.labelDept, d.DepartmentDisplay || d.Department) +
-          row(T.labelType, d.LeaveTypeDisplay || d.LeaveType) +
-          row(T.labelDates, d.HalfDay
-            ? fmtDate(d.StartDate) + ' (' + d.HalfDayLabel + ')'
-            : fmtDate(d.StartDate) + T.to + fmtDate(d.EndDate)) +
-          row(T.labelReason, d.Reason) +
-          row(T.labelStatus, d.StatusLabel || d.Status);
-
-        if (d.AttachmentUrl) {
-          var link = document.createElement('a');
-          link.href = d.AttachmentUrl;
-          link.target = '_blank';
-          link.rel = 'noopener';
-          link.style.cssText = 'display:block;margin-top:10px;color:#1B6CA8;font-weight:600;font-size:14px;';
-          link.innerText = T.viewAttachment;
-          card.appendChild(link);
-        }
-
-        if (d.OverlapWarning) {
-          currentOverlapWarning = d.OverlapWarning;
-          var warn = document.createElement('div');
-          warn.style.cssText = 'margin-top:10px;padding:10px;border-radius:6px;background:#FFF3DC;color:#8A5200;font-size:14px;';
-          warn.innerText = '⚠ ' + d.OverlapWarning;
-          card.appendChild(warn);
-        }
-
-        // คำขอนี้ถูกดำเนินการไปแล้ว (อนุมัติ/ปฏิเสธไปแล้ว) - ซ่อนช่อง PIN/ปุ่ม แล้วโชว์สถานะแทน
-        if (!d.Actionable) {
-          document.getElementById('actionArea').style.display = 'none';
-          showApproveMsg(T.alreadyProcessed + (d.StatusLabel || d.Status), true);
-        }
-      }).catch(function (err) { showApproveMsg(T.error + err, false); });
-    }
-
-    function showApproveMsg(text, ok) {
-      var el = document.getElementById('approveMsg');
-      el.style.display = 'block';
-      el.className = 'msgbox ' + (ok ? 'ok' : 'err');
-      el.innerText = text;
-    }
-
-    function decide(decision) {
-      var otp = document.getElementById('otp').value.trim();
-      if (!otp) { showApproveMsg(T.needPin, false); return; }
-      if (decision === 'reject' && !document.getElementById('comment').value.trim()) {
-        showApproveMsg(T.needComment, false); return;
-      }
-      // ยืนยันอีกครั้งก่อนส่งจริง (ทั้งกรณีอนุมัติและไม่อนุมัติ) - แนบคำเตือนคนลาซ้อนกันไปด้วยถ้ามี
-      var confirmMsg = decision === 'approve' ? T.confirmApprove : T.confirmReject;
-      if (currentOverlapWarning) confirmMsg = '⚠ ' + currentOverlapWarning + '\n\n' + confirmMsg;
-      if (!window.confirm(confirmMsg)) return;
-
-      callApi('api_approve', [requestId, role, otp, profile.userId, profile.displayName, decision, document.getElementById('comment').value])
-        .then(function (res) {
-          showApproveMsg(res.message, res.success);
-          if (res.success) {
-            window.alert(res.message);
-            if (typeof liff !== 'undefined' && liff.isInClient && liff.isInClient()) {
-              liff.closeWindow();
-            }
-          }
-        }).catch(function (err) {
-          showApproveMsg(T.error + err, false);
-        });
-    }
-  </script>
-</body>
-</html>
+    Logger.log('สำรองข้อมูลและล้างข้อมูลคำขอลาเรียบร้อยแล้ว (' + dateLabel + ')');
+  } catch (err) {
+    Logger.log('backupAndClearLeaveData_ error: ' + err);
+  }
+}
