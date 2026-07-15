@@ -34,17 +34,23 @@
     <h2>ยื่นคำขอลางาน</h2>
     <div id="who"></div>
     <label>ประเภทการลา</label>
-    <select id="leaveType">
-      <option>ลาป่วย</option>
-      <option>ลากิจ</option>
-      <option>ลาพักร้อน</option>
-      <option>ลาอื่นๆ</option>
+    <select id="leaveType" onchange="onLeaveTypeChange()">
+      <option value="ลาป่วย">ลาป่วย</option>
+      <option value="ลากิจ">ลากิจ</option>
+      <option value="ลาพักร้อน">ลาพักร้อน</option>
+      <option value="ลาไม่รับค่าจ้าง">ลาไม่รับค่าจ้าง</option>
+      <option value="ลาอื่นๆ">ลาอื่นๆ</option>
     </select>
-    <label>แผนก/ฝ่าย</label>
-    <select id="department">
-      <option value="ฝ่ายผลิต">ฝ่ายผลิต</option>
-      <option value="สำนักงาน">สำนักงาน</option>
-    </select>
+    <div id="leaveTypeHint" style="font-size:12px;color:#999;margin-top:6px;"></div>
+
+    <div id="photoWrap" style="display:none;">
+      <label>แนบรูปภาพ (จำเป็นสำหรับการลาป่วย)</label>
+      <input type="file" accept="image/*" id="sickPhoto" onchange="onPhotoSelected()">
+      <div id="photoPreviewWrap" style="margin-top:8px; display:none;">
+        <img id="photoPreview" style="max-width:100%; border-radius:6px;">
+      </div>
+    </div>
+
     <label>วันที่เริ่มลา</label>
     <input type="date" id="startDate">
     <label style="display:flex;align-items:center;gap:8px;font-weight:normal;margin-top:14px;">
@@ -103,11 +109,16 @@
       __log('unhandledrejection: ' + (e.reason && e.reason.message ? e.reason.message : e.reason));
     });
 
-    // ======================= เรียก Apps Script ผ่าน fetch (GET) =======================
+    // ======================= เรียก Apps Script ผ่าน fetch (POST) =======================
+    // ใช้ POST + Content-Type: text/plain (เป็น "simple request" ไม่ต้องผ่าน CORS preflight)
+    // เปลี่ยนจาก GET มาเป็น POST เพื่อรองรับ payload ขนาดใหญ่ เช่น รูปภาพแนบลาป่วย
     function callApi(fn, args) {
-      var url = EXEC_URL + '?api=1&fn=' + encodeURIComponent(fn) + '&payload=' + encodeURIComponent(JSON.stringify(args || []));
       __log('API call: ' + fn);
-      return fetch(url).then(function (res) {
+      return fetch(EXEC_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ api: 1, fn: fn, payload: args || [] })
+      }).then(function (res) {
         return res.json();
       }).catch(function (err) {
         __log('API FAILED: ' + fn + ' -> ' + err);
@@ -128,6 +139,7 @@
       confirmApprove: 'ยืนยันการอนุมัติคำขอนี้ใช่หรือไม่?',
       confirmReject: 'ยืนยันการไม่อนุมัติคำขอนี้ใช่หรือไม่?',
       alreadyProcessed: 'คำขอนี้ดำเนินการไปแล้ว สถานะปัจจุบัน: ',
+      viewAttachment: 'ดูรูปภาพแนบ',
       error: 'เกิดข้อผิดพลาด: ', dash: '-', to: ' ถึง '
     };
     var T_EN = {
@@ -142,6 +154,7 @@
       confirmApprove: 'Confirm approval of this request?',
       confirmReject: 'Confirm rejection of this request?',
       alreadyProcessed: 'This request has already been processed. Current status: ',
+      viewAttachment: 'View attached photo',
       error: 'Error: ', dash: '-', to: ' to '
     };
 
@@ -152,7 +165,7 @@
     var T = role === 'executive' ? T_EN : T_TH;
 
     // เวอร์ชันโค้ด: เอาไว้เช็คว่าไฟล์ที่ GitHub เป็นเวอร์ชันล่าสุดจริงมั้ย (เทียบกับที่ผมส่งให้)
-    var CODE_VERSION = 'v3-antispam-2026-07-14';
+    var CODE_VERSION = 'v4-photo-post-rules-2026-07-15';
     __log('code version: ' + CODE_VERSION);
     __log('page started, LIFF_ID=' + LIFF_ID + ', mode=' + (requestId ? 'approve(' + role + ')' : 'form'));
 
@@ -183,6 +196,78 @@
     function initFormPage() {
       document.getElementById('formApp').style.display = 'block';
       document.getElementById('who').innerText = 'ผู้ยื่นคำขอ: ' + profile.displayName;
+      onLeaveTypeChange(); // ตั้งค่าเริ่มต้นให้ตรงกับประเภทการลาที่เลือกอยู่ตอนโหลดหน้า
+    }
+
+    // เงื่อนไขแต่ละประเภทการลา:
+    //  - ลาป่วย: ต้องแนบรูป, ลาย้อนหลังได้ไม่จำกัด
+    //  - ลาไม่รับค่าจ้าง: ไม่มีข้อจำกัดใดๆ กดวันไหนก็ได้
+    //  - ลากิจ/ลาพักร้อน/ลาอื่นๆ: ต้องแจ้งล่วงหน้าอย่างน้อย 1 วัน (เลือกได้ตั้งแต่พรุ่งนี้เป็นต้นไป)
+    function onLeaveTypeChange() {
+      var lt = document.getElementById('leaveType').value;
+      var startInput = document.getElementById('startDate');
+      var hint = document.getElementById('leaveTypeHint');
+
+      if (lt === 'ลาป่วย' || lt === 'ลาไม่รับค่าจ้าง') {
+        startInput.removeAttribute('min');
+      } else {
+        var tmr = new Date();
+        tmr.setDate(tmr.getDate() + 1);
+        var mm = String(tmr.getMonth() + 1).padStart(2, '0');
+        var dd = String(tmr.getDate()).padStart(2, '0');
+        startInput.setAttribute('min', tmr.getFullYear() + '-' + mm + '-' + dd);
+      }
+
+      if (lt === 'ลาป่วย') {
+        hint.innerText = 'ลาป่วยต้องแนบรูปภาพ และสามารถลาย้อนหลังได้';
+      } else if (lt === 'ลาไม่รับค่าจ้าง') {
+        hint.innerText = 'ลาไม่รับค่าจ้าง เลือกวันที่ได้อิสระ ไม่มีข้อจำกัด';
+      } else {
+        hint.innerText = 'ต้องแจ้งล่วงหน้าอย่างน้อย 1 วัน (เลือกวันที่พรุ่งนี้เป็นต้นไป)';
+      }
+
+      document.getElementById('photoWrap').style.display = (lt === 'ลาป่วย') ? 'block' : 'none';
+    }
+
+    // ======================= แนบรูปภาพลาป่วย (ย่อขนาด + บีบอัดก่อนส่ง กันไฟล์ใหญ่เกินไป) =======================
+    var photoDataUrl = '';
+    function readAndCompressImage(file) {
+      return new Promise(function (resolve, reject) {
+        var reader = new FileReader();
+        reader.onload = function (e) {
+          var img = new Image();
+          img.onload = function () {
+            var maxDim = 1000;
+            var w = img.width, h = img.height;
+            if (w > maxDim || h > maxDim) {
+              if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
+              else { w = Math.round(w * maxDim / h); h = maxDim; }
+            }
+            var canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            resolve(canvas.toDataURL('image/jpeg', 0.7));
+          };
+          img.onerror = reject;
+          img.src = e.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+    function onPhotoSelected() {
+      var file = document.getElementById('sickPhoto').files[0];
+      if (!file) { photoDataUrl = ''; return; }
+      __log('compressing photo...');
+      readAndCompressImage(file).then(function (dataUrl) {
+        photoDataUrl = dataUrl;
+        document.getElementById('photoPreview').src = dataUrl;
+        document.getElementById('photoPreviewWrap').style.display = 'block';
+        __log('photo ready, ~' + Math.round(dataUrl.length / 1024) + 'KB');
+      }).catch(function (err) {
+        __log('photo compress error: ' + err);
+        showFormMsg('แนบรูปไม่สำเร็จ กรุณาลองใหม่', false);
+      });
     }
 
     function showFormMsg(text, ok) {
@@ -219,21 +304,26 @@
 
     function submitForm() {
       if (isSubmitting) { __log('submitForm blocked (already submitting)'); return; }
+      var leaveType = document.getElementById('leaveType').value;
       var startDate = document.getElementById('startDate').value;
       var halfDayChecked = document.getElementById('halfDayToggle').checked;
       var endDate = halfDayChecked ? startDate : document.getElementById('endDate').value;
       if (!startDate || !endDate) { showFormMsg('กรุณาเลือกวันที่ให้ครบถ้วน', false); return; }
+      if (leaveType === 'ลาป่วย' && !photoDataUrl) { showFormMsg('กรุณาแนบรูปภาพสำหรับการลาป่วย', false); return; }
 
       var data = {
         userId: profile.userId,
         displayName: profile.displayName,
-        leaveType: document.getElementById('leaveType').value,
-        department: document.getElementById('department').value,
+        leaveType: leaveType,
         startDate: startDate,
         endDate: endDate,
         halfDay: halfDayChecked ? document.getElementById('halfDayPeriod').value : '',
         reason: document.getElementById('reason').value
       };
+      if (leaveType === 'ลาป่วย' && photoDataUrl) {
+        var m = photoDataUrl.match(/^data:(.*?);base64,(.*)$/);
+        if (m) { data.photoMimeType = m[1]; data.photoBase64 = m[2]; }
+      }
 
       isSubmitting = true;
       var btn = document.getElementById('submitBtn');
@@ -245,6 +335,9 @@
         if (res.success) {
           showFormMsg('ส่งคำขอลาเรียบร้อยแล้ว เลขที่คำขอ ' + res.requestId + ' รอหัวหน้างานอนุมัติ', true);
           window.alert('ส่งคำขอลางานแล้ว');
+          photoDataUrl = '';
+          document.getElementById('sickPhoto').value = '';
+          document.getElementById('photoPreviewWrap').style.display = 'none';
         } else {
           showFormMsg(res.message || 'เกิดข้อผิดพลาด', false);
         }
@@ -277,6 +370,8 @@
       return m[3] + '-' + m[2] + '-' + m[1].slice(2);
     }
 
+    var currentOverlapWarning = '';
+
     function initApprovePage() {
       applyStaticText();
       document.getElementById('approveApp').style.display = 'block';
@@ -286,16 +381,35 @@
           return;
         }
         var d = res.data;
-        document.getElementById('detailCard').innerHTML =
+        var card = document.getElementById('detailCard');
+        card.innerHTML =
           row(T.labelRequestId, d.RequestID) +
-          row(T.labelEmployee, d.EmployeeName) +
-          row(T.labelDept, d.Department) +
+          row(T.labelEmployee, d.EmployeeDisplay || d.EmployeeName) +
+          row(T.labelDept, d.DepartmentDisplay || d.Department) +
           row(T.labelType, d.LeaveTypeDisplay || d.LeaveType) +
           row(T.labelDates, d.HalfDay
             ? fmtDate(d.StartDate) + ' (' + d.HalfDayLabel + ')'
             : fmtDate(d.StartDate) + T.to + fmtDate(d.EndDate)) +
           row(T.labelReason, d.Reason) +
           row(T.labelStatus, d.StatusLabel || d.Status);
+
+        if (d.AttachmentUrl) {
+          var link = document.createElement('a');
+          link.href = d.AttachmentUrl;
+          link.target = '_blank';
+          link.rel = 'noopener';
+          link.style.cssText = 'display:block;margin-top:10px;color:#1B6CA8;font-weight:600;font-size:14px;';
+          link.innerText = T.viewAttachment;
+          card.appendChild(link);
+        }
+
+        if (d.OverlapWarning) {
+          currentOverlapWarning = d.OverlapWarning;
+          var warn = document.createElement('div');
+          warn.style.cssText = 'margin-top:10px;padding:10px;border-radius:6px;background:#FFF3DC;color:#8A5200;font-size:14px;';
+          warn.innerText = '⚠ ' + d.OverlapWarning;
+          card.appendChild(warn);
+        }
 
         // คำขอนี้ถูกดำเนินการไปแล้ว (อนุมัติ/ปฏิเสธไปแล้ว) - ซ่อนช่อง PIN/ปุ่ม แล้วโชว์สถานะแทน
         if (!d.Actionable) {
@@ -318,8 +432,9 @@
       if (decision === 'reject' && !document.getElementById('comment').value.trim()) {
         showApproveMsg(T.needComment, false); return;
       }
-      // ยืนยันอีกครั้งก่อนส่งจริง (ทั้งกรณีอนุมัติและไม่อนุมัติ)
+      // ยืนยันอีกครั้งก่อนส่งจริง (ทั้งกรณีอนุมัติและไม่อนุมัติ) - แนบคำเตือนคนลาซ้อนกันไปด้วยถ้ามี
       var confirmMsg = decision === 'approve' ? T.confirmApprove : T.confirmReject;
+      if (currentOverlapWarning) confirmMsg = '⚠ ' + currentOverlapWarning + '\n\n' + confirmMsg;
       if (!window.confirm(confirmMsg)) return;
 
       callApi('api_approve', [requestId, role, otp, profile.userId, profile.displayName, decision, document.getElementById('comment').value])
