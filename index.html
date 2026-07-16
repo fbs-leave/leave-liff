@@ -6,88 +6,208 @@
 <title>ระบบขอลา</title>
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
-  body { font-family: 'Sarabun', sans-serif; padding: 16px; max-width: 480px; margin: 0 auto; background:#f5f6f8; }
-  h2 { color:#06c755; }
-  label { display:block; margin-top: 14px; font-weight:bold; font-size:14px; }
-  input, select, textarea { width:100%; padding:10px; margin-top:6px; box-sizing:border-box; border:1px solid #ccc; border-radius:6px; font-size:15px; }
-  button { width:100%; padding:14px; margin-top:20px; border:none; border-radius:8px; font-size:16px; font-weight:bold; color:#fff; }
-  .btn-primary { background:#06c755; }
-  .btn-approve { background:#06c755; margin-right:4%; }
-  .btn-reject { background:#e0483e; }
-  .row-btns { display:flex; }
-  .row-btns button { width:48%; }
-  .msgbox { margin-top:14px; padding:10px; border-radius:6px; display:none; }
-  .ok { background:#e6f7ea; color:#1a7a34; }
-  .err { background:#fdecea; color:#b3261e; }
-  #loading { text-align:center; padding: 40px 0; white-space:pre-wrap; }
-  .card { background:#fff; border-radius:8px; padding:16px; margin-top:10px; box-shadow:0 1px 4px rgba(0,0,0,.1); }
-  .card .r { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #eee; font-size:14px; }
-  #debugPanel { white-space: pre-wrap; word-break: break-all; font-family: monospace; font-size: 11px; background:#111; color:#0f0; padding:10px; border-radius:6px; margin-top:14px; max-height:35vh; overflow:auto; }
+  :root{
+    --primary:#2F6FED; --primary-dark:#1F55C7; --primary-tint:#EAF1FE;
+    --ink:#1A1A1F; --ink2:#5B5B66; --ink3:#9A9AA5;
+    --line:#ECECF0; --bg:#F5F6F8; --surface:#FFFFFF;
+    --danger-tint:#FDECEC; --danger:#C23B3B;
+    --amber-tint:#FFF3DC; --amber:#8A5200;
+    --ok-tint:#E6F7EA; --ok:#1A7A34;
+    --shadow: 0 2px 4px rgba(20,20,30,.09), 0 4px 12px rgba(20,20,30,.07);
+    --r-card:22px; --r-btn:16px; --r-input:14px; --r-chip:14px;
+    --fs-h1:21px; --fs-h2:17px; --fs-body:15px; --fs-label:12.5px; --fs-hint:12px; --fs-btn:15.5px;
+  }
+  *{box-sizing:border-box;}
+  body { font-family: 'Sarabun', sans-serif; padding: 16px; max-width: 480px; margin: 0 auto; background:var(--bg); color:var(--ink); }
+  h2.page-title { font-size:var(--fs-h1); font-weight:700; color:var(--ink); margin:4px 0 2px; }
+  .subtle { font-size:var(--fs-hint); color:var(--ink3); margin-bottom:10px; }
+  label { display:block; margin-top: 16px; font-weight:600; font-size:var(--fs-label); color:var(--ink2); }
+  input[type=date], input[type=text], input[type=file], textarea, select {
+    width:100%; padding:12px 14px; margin-top:6px; box-sizing:border-box; border:1px solid var(--line);
+    border-radius:var(--r-input); font-size:var(--fs-body); font-family:inherit; background:var(--surface); color:var(--ink);
+  }
+  textarea{resize:vertical;}
+  button{font-family:inherit;}
+  .btn-primary { width:100%; padding:15px; margin-top:22px; border:none; border-radius:var(--r-btn); font-size:var(--fs-btn); font-weight:700; color:#fff; background:var(--primary); box-shadow:var(--shadow); cursor:pointer; }
+  .btn-primary:disabled{ background:#D8D8DE; color:#9A9AA5; box-shadow:none; cursor:not-allowed; }
+  .btn-secondary { width:100%; padding:15px; margin-top:12px; border:none; border-radius:var(--r-btn); font-size:var(--fs-btn); font-weight:700; background:var(--primary-tint); color:var(--primary-dark); cursor:pointer; }
+
+  .choice-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:8px; }
+  .choice-btn{ display:flex; align-items:center; gap:8px; justify-content:center; padding:14px 10px; border:1.5px solid var(--line); border-radius:var(--r-chip); background:var(--surface); font-size:var(--fs-body); font-weight:600; color:var(--ink2); cursor:pointer; transition:all .15s; }
+  .choice-btn .emo{ font-size:18px; }
+  .choice-btn.active{ border-color:var(--primary); background:var(--primary-tint); color:var(--primary-dark); box-shadow:var(--shadow); }
+  .choice-row{ display:flex; gap:10px; margin-top:8px; }
+  .choice-row .choice-btn{ flex:1; }
+
+  .card { background:var(--surface); border-radius:var(--r-card); padding:20px; margin-top:12px; box-shadow:var(--shadow); }
+  .msgbox { margin-top:14px; padding:12px 14px; border-radius:var(--r-input); display:none; font-size:var(--fs-body); }
+  .ok { background:var(--ok-tint); color:var(--ok); }
+  .err { background:var(--danger-tint); color:var(--danger); }
+
+  #debugPanel { white-space: pre-wrap; word-break: break-all; font-family: monospace; font-size: 11px; background:#111; color:#0f0; padding:10px; border-radius:10px; margin-top:14px; max-height:30vh; overflow:auto; }
+
+  /* skeleton */
+  .skel{ background:linear-gradient(90deg,#E9E9EE 25%,#F4F4F7 37%,#E9E9EE 63%); background-size:400% 100%; animation:skel-shimmer 1.4s ease-in-out infinite; border-radius:var(--r-input); }
+  @keyframes skel-shimmer{ 0%{background-position:100% 50%} 100%{background-position:0 50%} }
+  .skel-line{ height:14px; margin:10px 0; }
+  .skel-block{ height:44px; margin-top:6px; }
+
+  /* ease-out reveal */
+  .fade-in{ animation:fadeSlideIn .38s ease-out both; }
+  @keyframes fadeSlideIn{ from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:translateY(0);} }
+
+  /* full-screen spinner overlay while a request is in flight */
+  .spinner-overlay{ position:fixed; inset:0; background:rgba(255,255,255,.9); display:none; flex-direction:column; align-items:center; justify-content:center; z-index:999; gap:14px; }
+  .spinner-overlay.show{ display:flex; }
+  .spinner{ width:38px; height:38px; border-radius:50%; border:4px solid var(--primary-tint); border-top-color:var(--primary); animation:spin .8s linear infinite; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .spinner-text{ font-size:var(--fs-body); color:var(--ink2); font-weight:600; }
+
+  /* summary/review step */
+  .summary-row{ display:flex; justify-content:space-between; gap:10px; padding:10px 0; border-bottom:1px solid var(--line); font-size:var(--fs-body); }
+  .summary-row:last-child{ border-bottom:none; }
+  .summary-row .k{ color:var(--ink3); font-size:var(--fs-label); font-weight:600; flex-shrink:0; }
+  .summary-row .v{ font-weight:600; color:var(--ink); text-align:right; }
+
+  /* approval card */
+  .approve-header{ text-align:left; }
+  .approve-name{ font-size:var(--fs-h1); font-weight:700; color:var(--primary-dark); }
+  .approve-question{ font-size:var(--fs-body); color:var(--ink2); margin-top:4px; }
+  .approve-divider{ height:1px; background:var(--line); margin:16px 0; }
+  .approve-grid{ display:grid; grid-template-columns:1fr 1fr; gap:16px 14px; }
+  .ag-label{ font-size:var(--fs-label); color:var(--ink3); font-weight:600; margin-bottom:4px; }
+  .ag-value{ font-size:var(--fs-body); color:var(--ink); font-weight:600; }
+  .approve-extra{ margin-top:16px; padding-top:14px; border-top:1px solid var(--line); }
+  .ae-row{ display:flex; justify-content:space-between; gap:10px; padding:5px 0; font-size:13.5px; }
+  .ae-row .k{ color:var(--ink3); }
+  .ae-row .v{ color:var(--ink2); text-align:right; }
+
+  .pin-note{ font-size:var(--fs-hint); color:var(--ink3); margin-top:6px; }
+  .btn-reject{ width:100%; padding:15px; margin-top:20px; border:none; border-radius:var(--r-btn); font-size:var(--fs-btn); font-weight:700; cursor:not-allowed; background:#E4E4E9; color:#9A9AA5; }
+  .btn-reject.enabled{ background:var(--primary-tint); color:var(--primary-dark); cursor:pointer; }
+  .btn-approve{ width:100%; padding:15px; margin-top:12px; border:none; border-radius:var(--r-btn); font-size:var(--fs-btn); font-weight:700; cursor:pointer; background:var(--primary); color:#fff; box-shadow:var(--shadow); }
+  .btn-approve:disabled, .btn-reject:disabled{ opacity:.65; cursor:not-allowed; }
+
+  .warn-box{ margin-top:14px; padding:12px 14px; border-radius:var(--r-input); background:var(--amber-tint); color:var(--amber); font-size:13.5px; }
+  .attach-link{ display:block; margin-top:12px; color:var(--primary-dark); font-weight:700; font-size:14px; text-decoration:none; }
+  #photoPreview{ border-radius:var(--r-input); }
 </style>
 </head>
 <body>
-  <div id="loading">กำลังโหลด...</div>
+  <div id="loading" style="display:none;text-align:center;padding:40px 0;white-space:pre-wrap;"></div>
+
+  <!-- โครงหน้าจอ (skeleton) ระหว่างรอโหลดข้อมูล -->
+  <div id="skeletonForm" class="card" style="display:none;">
+    <div class="skel skel-line" style="width:55%;height:20px;"></div>
+    <div class="skel skel-line" style="width:35%;margin-top:18px;"></div>
+    <div class="skel skel-block"></div>
+    <div class="skel skel-block"></div>
+    <div class="skel skel-line" style="width:40%;margin-top:20px;"></div>
+    <div class="skel skel-block"></div>
+    <div class="skel skel-block" style="height:52px;margin-top:26px;"></div>
+  </div>
+  <div id="skeletonApprove" class="card" style="display:none;">
+    <div class="skel skel-line" style="width:60%;height:20px;"></div>
+    <div class="skel skel-line" style="width:80%;margin-top:10px;"></div>
+    <div class="skel" style="height:1px;margin:18px 0;"></div>
+    <div class="skel skel-block" style="height:60px;"></div>
+    <div class="skel skel-block" style="height:60px;"></div>
+    <div class="skel skel-block" style="height:52px;margin-top:24px;"></div>
+  </div>
+
   <div id="debugPanel"></div>
 
   <!-- ฟอร์มยื่นคำขอลา (พนักงาน) -->
   <div id="formApp" style="display:none;">
-    <h2>ยื่นคำขอลางาน</h2>
-    <div id="who"></div>
-    <label>ประเภทการลา</label>
-    <select id="leaveType" onchange="onLeaveTypeChange()">
-      <option value="ลาป่วย">ลาป่วย</option>
-      <option value="ลากิจ">ลากิจ</option>
-      <option value="ลาพักร้อน">ลาพักร้อน</option>
-      <option value="ลาไม่รับค่าจ้าง">ลาไม่รับค่าจ้าง</option>
-      <option value="ลาอื่นๆ">ลาอื่นๆ</option>
-    </select>
-    <div id="leaveTypeHint" style="font-size:12px;color:#999;margin-top:6px;"></div>
+    <div id="formFields">
+      <h2 class="page-title">ยื่นคำขอลางาน</h2>
+      <div id="who" class="subtle"></div>
 
-    <div id="photoWrap" style="display:none;">
-      <label>แนบรูปภาพ (จำเป็นสำหรับการลาป่วย)</label>
-      <input type="file" accept="image/*" id="sickPhoto" onchange="onPhotoSelected()">
-      <div id="photoPreviewWrap" style="margin-top:8px; display:none;">
-        <img id="photoPreview" style="max-width:100%; border-radius:6px;">
+      <label>เลือกประเภทการลา</label>
+      <div class="choice-grid" id="leaveTypeGrid">
+        <div class="choice-btn active" data-value="ลาพักร้อน" onclick="selectLeaveType('ลาพักร้อน', this)"><span class="emo">🏖️</span>ลาพักร้อน</div>
+        <div class="choice-btn" data-value="ลากิจ" onclick="selectLeaveType('ลากิจ', this)"><span class="emo">💼</span>ลากิจ</div>
+        <div class="choice-btn" data-value="ลาป่วย" onclick="selectLeaveType('ลาป่วย', this)"><span class="emo">🩺</span>ลาป่วย</div>
+        <div class="choice-btn" data-value="ลาไม่รับค่าจ้าง" onclick="selectLeaveType('ลาไม่รับค่าจ้าง', this)"><span class="emo">💸</span>ลาไม่รับค่าจ้าง</div>
+        <div class="choice-btn" data-value="ลาอื่นๆ" onclick="selectLeaveType('ลาอื่นๆ', this)"><span class="emo">📝</span>ลาอื่นๆ</div>
       </div>
+      <div id="leaveTypeHint" class="subtle" style="margin-top:8px;"></div>
+
+      <div id="photoWrap" style="display:none;">
+        <label>แนบรูปภาพ (จำเป็นสำหรับการลาป่วย)</label>
+        <input type="file" accept="image/*" id="sickPhoto" onchange="onPhotoSelected()">
+        <div id="photoPreviewWrap" style="margin-top:8px; display:none;">
+          <img id="photoPreview" style="max-width:100%;">
+        </div>
+      </div>
+
+      <label>รูปแบบการลา</label>
+      <div class="choice-row" id="dayTypeRow">
+        <div class="choice-btn active" data-value="full" onclick="selectDayType('full', this)">เต็มวัน</div>
+        <div class="choice-btn" data-value="half" onclick="selectDayType('half', this)">ครึ่งวัน</div>
+      </div>
+
+      <div id="halfDayWrap" style="display:none;">
+        <label>ช่วงเวลา</label>
+        <select id="halfDayPeriod">
+          <option value="AM">ครึ่งวันเช้า</option>
+          <option value="PM">ครึ่งวันบ่าย</option>
+        </select>
+      </div>
+
+      <label>วันที่เริ่มลา</label>
+      <input type="date" id="startDate">
+      <div id="endDateRow">
+        <label id="endDateLabel">วันที่สิ้นสุด</label>
+        <input type="date" id="endDate">
+      </div>
+
+      <label>เหตุผล</label>
+      <textarea id="reason" rows="3" placeholder="ระบุเหตุผลการลา" oninput="updateSubmitEnabled()"></textarea>
+      <div id="reasonHint" class="subtle" style="display:none;color:var(--danger);">กรุณาระบุเหตุผลสำหรับ "ลาอื่นๆ"</div>
+
+      <button class="btn-primary" id="submitBtn" onclick="submitForm()">ส่งคำขอลา</button>
+      <div id="formMsg" class="msgbox"></div>
     </div>
 
-    <label>วันที่เริ่มลา</label>
-    <input type="date" id="startDate">
-    <label style="display:flex;align-items:center;gap:8px;font-weight:normal;margin-top:14px;">
-      <input type="checkbox" id="halfDayToggle" style="width:auto;margin:0;" onchange="toggleHalfDay()">
-      ลาครึ่งวัน
-    </label>
-    <div id="halfDayWrap" style="display:none;">
-      <label>ช่วงเวลา</label>
-      <select id="halfDayPeriod">
-        <option value="AM">ครึ่งวันเช้า</option>
-        <option value="PM">ครึ่งวันบ่าย</option>
-      </select>
+    <!-- สรุปรายละเอียดก่อนยืนยันส่ง -->
+    <div id="summaryStep" class="card" style="display:none;">
+      <h2 class="page-title" style="font-size:var(--fs-h2);">สรุปคำขอลางาน</h2>
+      <div class="subtle">กรุณาตรวจสอบรายละเอียดก่อนยืนยันส่งคำขอ</div>
+      <div id="summaryBody"></div>
+      <button class="btn-secondary" onclick="editSummary()">แก้ไข</button>
+      <button class="btn-primary" id="confirmSubmitBtn" onclick="confirmSubmit()">ยืนยันส่งคำขอ</button>
     </div>
-    <label id="endDateLabel">วันที่สิ้นสุด</label>
-    <input type="date" id="endDate">
-    <label>เหตุผล</label>
-    <textarea id="reason" rows="3" placeholder="ระบุเหตุผลการลา"></textarea>
-    <button class="btn-primary" id="submitBtn" onclick="submitForm()">ส่งคำขอลา</button>
-    <div id="formMsg" class="msgbox"></div>
   </div>
 
   <!-- หน้าอนุมัติ (หัวหน้างาน/ผู้บริหาร) -->
   <div id="approveApp" style="display:none;">
-    <h2 id="roleTitle">Approval</h2>
-    <div class="card" id="detailCard"></div>
-    <div id="actionArea">
-      <label id="lblPin">Approval PIN</label>
-      <input type="text" id="otp" inputmode="numeric" placeholder="">
-      <div id="hintPin" style="font-size:12px;color:#999;margin-top:4px;"></div>
-      <label id="lblComment">Comment</label>
-      <textarea id="comment" rows="2"></textarea>
-      <div class="row-btns">
-        <button class="btn-approve" id="btnApprove" onclick="decide('approve')">Approve</button>
-        <button class="btn-reject" id="btnReject" onclick="decide('reject')">Reject</button>
+    <div id="approveContent">
+      <div class="card">
+        <div class="approve-header">
+          <div class="approve-name" id="apName"></div>
+          <div class="approve-question" id="apQuestion"></div>
+        </div>
+        <div class="approve-divider"></div>
+        <div class="approve-grid" id="apGrid"></div>
+        <div class="approve-extra" id="apExtra"></div>
       </div>
+      <div id="actionArea">
+        <label id="lblPin">Approval PIN</label>
+        <input type="text" id="otp" inputmode="numeric" autocomplete="off" placeholder="">
+        <div id="hintPin" class="pin-note"></div>
+        <label id="lblComment">Comment</label>
+        <textarea id="comment" rows="2" oninput="checkRejectEnable()"></textarea>
+        <button class="btn-reject" id="btnReject" disabled onclick="decide('reject')">Reject</button>
+        <button class="btn-approve" id="btnApprove" onclick="decide('approve')">Approve</button>
+      </div>
+      <div id="approveMsg" class="msgbox"></div>
     </div>
-    <div id="approveMsg" class="msgbox"></div>
+  </div>
+
+  <div id="spinnerOverlay" class="spinner-overlay">
+    <div class="spinner"></div>
+    <div class="spinner-text" id="spinnerText">กำลังส่ง...</div>
   </div>
 
   <script>
@@ -109,6 +229,15 @@
       __log('unhandledrejection: ' + (e.reason && e.reason.message ? e.reason.message : e.reason));
     });
 
+    // ======================= สปินเนอร์เต็มจอระหว่างส่งข้อมูล =======================
+    function showSpinner(text) {
+      document.getElementById('spinnerText').innerText = text || 'กำลังส่ง...';
+      document.getElementById('spinnerOverlay').classList.add('show');
+    }
+    function hideSpinner() {
+      document.getElementById('spinnerOverlay').classList.remove('show');
+    }
+
     // ======================= เรียก Apps Script ผ่าน fetch (POST) =======================
     // ใช้ POST + Content-Type: text/plain (เป็น "simple request" ไม่ต้องผ่าน CORS preflight)
     // เปลี่ยนจาก GET มาเป็น POST เพื่อรองรับ payload ขนาดใหญ่ เช่น รูปภาพแนบลาป่วย
@@ -129,34 +258,42 @@
     // ======================= ข้อความ 2 ภาษา สำหรับหน้าอนุมัติ =======================
     var T_TH = {
       roleTitleSupervisor: 'หน้าอนุมัติ (หัวหน้างาน)', roleTitleExecutive: 'หน้าอนุมัติ (ผู้บริหาร)',
-      labelRequestId: 'เลขที่คำขอ', labelEmployee: 'พนักงาน', labelDept: 'แผนก',
-      labelType: 'ประเภทการลา', labelDates: 'วันที่', labelReason: 'เหตุผล', labelStatus: 'สถานะปัจจุบัน',
+      headerQuestion: 'ขออนุญาตลางาน คุณอนุมัติหรือไม่?',
+      labelRequestId: 'เลขที่คำขอ', labelEmployee: 'พนักงาน', labelPosition: 'ตำแหน่ง', labelDept: 'แผนก',
+      labelType: 'ประเภทการลา', labelFormat: 'รูปแบบการลา', labelDates: 'ลางานวันที่', labelDuration: 'จำนวนวัน',
+      labelReason: 'เหตุผล', labelStatus: 'สถานะปัจจุบัน',
       lblPin: 'กรอกรหัสอนุมัติของคุณ (PIN)', pinPlaceholder: 'ใส่รหัส PIN ของคุณ',
       hintPin: 'รหัสนี้เป็นรหัสประจำตัวหัวหน้างาน/ผู้บริหาร ตั้งและแก้ไขได้ที่หน้า Admin > Settings',
       lblComment: 'หมายเหตุ (กรณีไม่อนุมัติ กรุณาระบุเหตุผล)',
-      btnApprove: 'อนุมัติ', btnReject: 'ไม่อนุมัติ',
+      btnApprove: 'อนุมัติการลา', btnReject: 'ไม่อนุมัติ',
       needPin: 'กรุณากรอกรหัสอนุมัติ', needComment: 'กรุณาระบุเหตุผลที่ไม่อนุมัติ',
       confirmApprove: 'ยืนยันการอนุมัติคำขอนี้ใช่หรือไม่?',
       confirmReject: 'ยืนยันการไม่อนุมัติคำขอนี้ใช่หรือไม่?',
       alreadyProcessed: 'คำขอนี้ดำเนินการไปแล้ว สถานะปัจจุบัน: ',
       viewAttachment: 'ดูรูปภาพแนบ',
       sending: 'กำลังส่ง...',
+      sendingOverlayApprove: 'กำลังบันทึกผลการอนุมัติ...',
+      fullDay: 'เต็มวัน', halfDay: 'ครึ่งวัน', day: ' วัน',
       error: 'เกิดข้อผิดพลาด: ', dash: '-', to: ' ถึง '
     };
     var T_EN = {
       roleTitleSupervisor: 'Approval Page (Supervisor)', roleTitleExecutive: 'Approval Page (Executive)',
-      labelRequestId: 'Request ID', labelEmployee: 'Employee', labelDept: 'Department',
-      labelType: 'Leave Type', labelDates: 'Dates', labelReason: 'Reason', labelStatus: 'Current Status',
+      headerQuestion: 'is requesting leave. Do you approve?',
+      labelRequestId: 'Request ID', labelEmployee: 'Employee', labelPosition: 'Position', labelDept: 'Department',
+      labelType: 'Leave Type', labelFormat: 'Format', labelDates: 'Dates', labelDuration: 'Duration',
+      labelReason: 'Reason', labelStatus: 'Current Status',
       lblPin: 'Enter your Approval PIN', pinPlaceholder: 'Enter your PIN',
       hintPin: 'This is your personal Executive approval PIN. It can be set/changed on the Admin > Settings page.',
       lblComment: 'Comment (required if rejecting)',
-      btnApprove: 'Approve', btnReject: 'Reject',
+      btnApprove: 'Approve Leave', btnReject: 'Reject',
       needPin: 'Please enter your approval PIN', needComment: 'Please provide a reason for rejecting',
       confirmApprove: 'Confirm approval of this request?',
       confirmReject: 'Confirm rejection of this request?',
       alreadyProcessed: 'This request has already been processed. Current status: ',
       viewAttachment: 'View attached photo',
       sending: 'Sending...',
+      sendingOverlayApprove: 'Saving your decision...',
+      fullDay: 'Full day', halfDay: 'Half day', day: ' day',
       error: 'Error: ', dash: '-', to: ' to '
     };
 
@@ -167,12 +304,18 @@
     var T = role === 'executive' ? T_EN : T_TH;
 
     // เวอร์ชันโค้ด: เอาไว้เช็คว่าไฟล์ที่ GitHub เป็นเวอร์ชันล่าสุดจริงมั้ย (เทียบกับที่ผมส่งให้)
-    var CODE_VERSION = 'v5-approve-antispam-2026-07-15';
+    var CODE_VERSION = 'v7-uxrefresh-2026-07-16';
     __log('code version: ' + CODE_VERSION);
     __log('page started, LIFF_ID=' + LIFF_ID + ', mode=' + (requestId ? 'approve(' + role + ')' : 'form'));
 
+    // แสดง skeleton ที่ตรงกับโหมดของหน้านี้ทันที (ไม่ต้องรอ LIFF โหลดเสร็จก่อน)
+    document.getElementById(requestId ? 'skeletonApprove' : 'skeletonForm').style.display = 'block';
+
     if (typeof liff === 'undefined') {
-      document.getElementById('loading').innerText = 'ไม่พบไลบรารี LIFF กรุณาลองใหม่';
+      document.getElementById(requestId ? 'skeletonApprove' : 'skeletonForm').style.display = 'none';
+      var ld = document.getElementById('loading');
+      ld.style.display = 'block';
+      ld.innerText = 'ไม่พบไลบรารี LIFF กรุณาลองใหม่';
     } else {
       liff.init({ liffId: LIFF_ID }).then(function () {
         __log('liff.init success, isInClient=' + liff.isInClient());
@@ -182,7 +325,6 @@
         if (!p) return;
         profile = p;
         __log('profile ok: ' + p.displayName);
-        document.getElementById('loading').style.display = 'none';
         if (requestId) {
           initApprovePage();
         } else {
@@ -190,15 +332,44 @@
         }
       }).catch(function (err) {
         __log('LIFF ERROR: ' + (err && err.message));
-        document.getElementById('loading').innerText = 'เกิดข้อผิดพลาดในการเชื่อมต่อ LINE: ' + (err && err.message ? err.message : err);
+        document.getElementById(requestId ? 'skeletonApprove' : 'skeletonForm').style.display = 'none';
+        var ld2 = document.getElementById('loading');
+        ld2.style.display = 'block';
+        ld2.innerText = 'เกิดข้อผิดพลาดในการเชื่อมต่อ LINE: ' + (err && err.message ? err.message : err);
       });
     }
 
     // ======================= หน้าฟอร์มยื่นคำขอลา =======================
+    var selectedLeaveType = 'ลาพักร้อน';
+    var selectedDayType = 'full';
+    var LEAVE_EMOJI = { 'ลาพักร้อน': '🏖️', 'ลากิจ': '💼', 'ลาป่วย': '🩺', 'ลาไม่รับค่าจ้าง': '💸', 'ลาอื่นๆ': '📝' };
+
     function initFormPage() {
-      document.getElementById('formApp').style.display = 'block';
+      document.getElementById('skeletonForm').style.display = 'none';
       document.getElementById('who').innerText = 'ผู้ยื่นคำขอ: ' + profile.displayName;
+      var app = document.getElementById('formApp');
+      app.style.display = 'block';
+      app.classList.add('fade-in');
       onLeaveTypeChange(); // ตั้งค่าเริ่มต้นให้ตรงกับประเภทการลาที่เลือกอยู่ตอนโหลดหน้า
+    }
+
+    function selectLeaveType(value, el) {
+      selectedLeaveType = value;
+      document.querySelectorAll('#leaveTypeGrid .choice-btn').forEach(function (b) { b.classList.remove('active'); });
+      el.classList.add('active');
+      onLeaveTypeChange();
+    }
+
+    function selectDayType(value, el) {
+      selectedDayType = value;
+      document.querySelectorAll('#dayTypeRow .choice-btn').forEach(function (b) { b.classList.remove('active'); });
+      el.classList.add('active');
+      var isHalf = value === 'half';
+      document.getElementById('halfDayWrap').style.display = isHalf ? 'block' : 'none';
+      document.getElementById('endDateRow').style.display = isHalf ? 'none' : 'block';
+      if (isHalf) {
+        document.getElementById('endDate').value = document.getElementById('startDate').value;
+      }
     }
 
     // เงื่อนไขแต่ละประเภทการลา:
@@ -206,7 +377,7 @@
     //  - ลาไม่รับค่าจ้าง: ไม่มีข้อจำกัดใดๆ กดวันไหนก็ได้
     //  - ลากิจ/ลาพักร้อน/ลาอื่นๆ: ต้องแจ้งล่วงหน้าอย่างน้อย 1 วัน (เลือกได้ตั้งแต่พรุ่งนี้เป็นต้นไป)
     function onLeaveTypeChange() {
-      var lt = document.getElementById('leaveType').value;
+      var lt = selectedLeaveType;
       var startInput = document.getElementById('startDate');
       var hint = document.getElementById('leaveTypeHint');
 
@@ -224,11 +395,24 @@
         hint.innerText = 'ลาป่วยต้องแนบรูปภาพ และสามารถลาย้อนหลังได้';
       } else if (lt === 'ลาไม่รับค่าจ้าง') {
         hint.innerText = 'ลาไม่รับค่าจ้าง เลือกวันที่ได้อิสระ ไม่มีข้อจำกัด';
+      } else if (lt === 'ลาอื่นๆ') {
+        hint.innerText = 'ต้องแจ้งล่วงหน้าอย่างน้อย 1 วัน และกรุณาระบุเหตุผลด้านล่าง';
       } else {
         hint.innerText = 'ต้องแจ้งล่วงหน้าอย่างน้อย 1 วัน (เลือกวันที่พรุ่งนี้เป็นต้นไป)';
       }
 
       document.getElementById('photoWrap').style.display = (lt === 'ลาป่วย') ? 'block' : 'none';
+      document.getElementById('reasonHint').style.display = 'none';
+      updateSubmitEnabled();
+    }
+
+    // บังคับกรอกเหตุผลเมื่อเลือก "ลาอื่นๆ" (ปุ่มส่งเป็นสีเทากดไม่ได้จนกว่าจะกรอก) / บังคับแนบรูปเมื่อลาป่วย
+    function updateSubmitEnabled() {
+      var reasonVal = document.getElementById('reason').value.trim();
+      var invalid = false;
+      if (selectedLeaveType === 'ลาอื่นๆ' && !reasonVal) invalid = true;
+      document.getElementById('reasonHint').style.display = (selectedLeaveType === 'ลาอื่นๆ' && !reasonVal) ? 'block' : 'none';
+      document.getElementById('submitBtn').disabled = invalid;
     }
 
     // ======================= แนบรูปภาพลาป่วย (ย่อขนาด + บีบอัดก่อนส่ง กันไฟล์ใหญ่เกินไป) =======================
@@ -279,92 +463,13 @@
       el.innerText = text;
     }
 
-    // สลับโหมด "ลาครึ่งวัน": ซ่อนช่องวันที่สิ้นสุด แล้วบังคับให้เท่ากับวันเริ่มลาเสมอ
-    function toggleHalfDay() {
-      var checked = document.getElementById('halfDayToggle').checked;
-      document.getElementById('halfDayWrap').style.display = checked ? 'block' : 'none';
-      document.getElementById('endDateLabel').style.display = checked ? 'none' : 'block';
-      document.getElementById('endDate').style.display = checked ? 'none' : 'block';
-      if (checked) {
-        document.getElementById('endDate').value = document.getElementById('startDate').value;
-      }
-    }
     document.getElementById('startDate').addEventListener('change', function () {
-      if (document.getElementById('halfDayToggle').checked) {
+      if (selectedDayType === 'half') {
         document.getElementById('endDate').value = this.value;
       }
     });
 
-    // กันสแปม: ถ้ากำลังส่งคำขออยู่ ห้ามกดส่งซ้ำอีก
-    var isSubmitting = false;
-    function resetSubmitButton() {
-      isSubmitting = false;
-      var btn = document.getElementById('submitBtn');
-      btn.disabled = false;
-      btn.innerText = 'ส่งคำขอลา';
-    }
-
-    function submitForm() {
-      if (isSubmitting) { __log('submitForm blocked (already submitting)'); return; }
-      var leaveType = document.getElementById('leaveType').value;
-      var startDate = document.getElementById('startDate').value;
-      var halfDayChecked = document.getElementById('halfDayToggle').checked;
-      var endDate = halfDayChecked ? startDate : document.getElementById('endDate').value;
-      if (!startDate || !endDate) { showFormMsg('กรุณาเลือกวันที่ให้ครบถ้วน', false); return; }
-      if (leaveType === 'ลาป่วย' && !photoDataUrl) { showFormMsg('กรุณาแนบรูปภาพสำหรับการลาป่วย', false); return; }
-
-      var data = {
-        userId: profile.userId,
-        displayName: profile.displayName,
-        leaveType: leaveType,
-        startDate: startDate,
-        endDate: endDate,
-        halfDay: halfDayChecked ? document.getElementById('halfDayPeriod').value : '',
-        reason: document.getElementById('reason').value
-      };
-      if (leaveType === 'ลาป่วย' && photoDataUrl) {
-        var m = photoDataUrl.match(/^data:(.*?);base64,(.*)$/);
-        if (m) { data.photoMimeType = m[1]; data.photoBase64 = m[2]; }
-      }
-
-      isSubmitting = true;
-      var btn = document.getElementById('submitBtn');
-      btn.disabled = true;
-      btn.innerText = 'กำลังส่ง...';
-
-      callApi('api_submitLeave', [data]).then(function (res) {
-        resetSubmitButton();
-        if (res.success) {
-          showFormMsg('ส่งคำขอลาเรียบร้อยแล้ว เลขที่คำขอ ' + res.requestId + ' รอหัวหน้างานอนุมัติ', true);
-          window.alert('ส่งคำขอลางานแล้ว');
-          photoDataUrl = '';
-          document.getElementById('sickPhoto').value = '';
-          document.getElementById('photoPreviewWrap').style.display = 'none';
-        } else {
-          showFormMsg(res.message || 'เกิดข้อผิดพลาด', false);
-        }
-      }).catch(function (err) {
-        resetSubmitButton();
-        showFormMsg('เกิดข้อผิดพลาด: ' + err, false);
-      });
-    }
-
-    // ======================= หน้าอนุมัติ =======================
-    function applyStaticText() {
-      document.getElementById('roleTitle').innerText = role === 'executive' ? T.roleTitleExecutive : T.roleTitleSupervisor;
-      document.getElementById('lblPin').innerText = T.lblPin;
-      document.getElementById('otp').placeholder = T.pinPlaceholder;
-      document.getElementById('hintPin').innerText = T.hintPin;
-      document.getElementById('lblComment').innerText = T.lblComment;
-      document.getElementById('btnApprove').innerText = T.btnApprove;
-      document.getElementById('btnReject').innerText = T.btnReject;
-    }
-
-    function row(label, value) {
-      return '<div class="r"><span>' + label + '</span><span>' + (value || '-') + '</span></div>';
-    }
-
-    // แปลงวันที่จาก yyyy-MM-dd (หรือ ISO) เป็น DD-MM-YY สำหรับแสดงผล
+    // แปลงวันที่จาก yyyy-MM-dd เป็น DD-MM-YY สำหรับแสดงผล
     function fmtDate(v) {
       if (!v) return '';
       var m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -372,53 +477,206 @@
       return m[3] + '-' + m[2] + '-' + m[1].slice(2);
     }
 
+    // กันสแปม: ถ้ากำลังส่งคำขออยู่ ห้ามกดส่งซ้ำอีก
+    var isSubmitting = false;
+    var pendingSubmitData = null;
+
+    function submitForm() {
+      if (isSubmitting) { __log('submitForm blocked (already submitting)'); return; }
+      var startDate = document.getElementById('startDate').value;
+      var halfChecked = selectedDayType === 'half';
+      var endDate = halfChecked ? startDate : document.getElementById('endDate').value;
+      if (!startDate || !endDate) { showFormMsg('กรุณาเลือกวันที่ให้ครบถ้วน', false); return; }
+      if (selectedLeaveType === 'ลาป่วย' && !photoDataUrl) { showFormMsg('กรุณาแนบรูปภาพสำหรับการลาป่วย', false); return; }
+      var reasonVal = document.getElementById('reason').value.trim();
+      if (selectedLeaveType === 'ลาอื่นๆ' && !reasonVal) { showFormMsg('กรุณาระบุเหตุผลสำหรับ "ลาอื่นๆ"', false); return; }
+
+      var data = {
+        userId: profile.userId,
+        displayName: profile.displayName,
+        leaveType: selectedLeaveType,
+        startDate: startDate,
+        endDate: endDate,
+        halfDay: halfChecked ? document.getElementById('halfDayPeriod').value : '',
+        reason: reasonVal
+      };
+      if (selectedLeaveType === 'ลาป่วย' && photoDataUrl) {
+        var m = photoDataUrl.match(/^data:(.*?);base64,(.*)$/);
+        if (m) { data.photoMimeType = m[1]; data.photoBase64 = m[2]; }
+      }
+
+      showSummary(data);
+    }
+
+    // สรุปรายละเอียดให้ดูก่อนกดยืนยันส่งจริง
+    function showSummary(data) {
+      pendingSubmitData = data;
+      var dayLabel = data.halfDay ? ('ครึ่งวัน (' + (data.halfDay === 'AM' ? 'เช้า' : 'บ่าย') + ')') : 'เต็มวัน';
+      var dateLabel = (data.startDate === data.endDate) ? fmtDate(data.startDate) : (fmtDate(data.startDate) + ' - ' + fmtDate(data.endDate));
+      var rows = [
+        ['ประเภทการลา', (LEAVE_EMOJI[data.leaveType] || '') + ' ' + data.leaveType],
+        ['รูปแบบการลา', dayLabel],
+        ['วันที่ลา', dateLabel],
+        ['เหตุผล', data.reason || '-']
+      ];
+      if (data.photoBase64) rows.push(['รูปแนบ', 'แนบแล้ว ✓']);
+      document.getElementById('summaryBody').innerHTML = rows.map(function (r) {
+        return '<div class="summary-row"><span class="k">' + r[0] + '</span><span class="v">' + r[1] + '</span></div>';
+      }).join('');
+      document.getElementById('formFields').style.display = 'none';
+      var step = document.getElementById('summaryStep');
+      step.style.display = 'block';
+      step.classList.add('fade-in');
+    }
+    function editSummary() {
+      document.getElementById('summaryStep').style.display = 'none';
+      document.getElementById('formFields').style.display = 'block';
+    }
+    function confirmSubmit() {
+      if (isSubmitting || !pendingSubmitData) return;
+      doActualSubmit(pendingSubmitData);
+    }
+
+    function doActualSubmit(data) {
+      isSubmitting = true;
+      var btn = document.getElementById('confirmSubmitBtn');
+      btn.disabled = true;
+      btn.innerText = T_TH.sending;
+      showSpinner('กำลังส่งคำขอลา...');
+
+      callApi('api_submitLeave', [data]).then(function (res) {
+        hideSpinner();
+        isSubmitting = false;
+        if (res.success) {
+          btn.innerText = 'ส่งแล้ว';
+          showFormMsg('ส่งคำขอลาเรียบร้อยแล้ว เลขที่คำขอ ' + res.requestId + ' รอหัวหน้างานอนุมัติ', true);
+          window.alert('ส่งคำขอลางานแล้ว');
+          photoDataUrl = '';
+          document.getElementById('sickPhoto').value = '';
+          document.getElementById('photoPreviewWrap').style.display = 'none';
+          if (typeof liff !== 'undefined' && liff.isInClient && liff.isInClient()) {
+            liff.closeWindow();
+          }
+        } else {
+          btn.disabled = false;
+          btn.innerText = 'ยืนยันส่งคำขอ';
+          editSummary();
+          showFormMsg(res.message || 'เกิดข้อผิดพลาด', false);
+        }
+      }).catch(function (err) {
+        hideSpinner();
+        isSubmitting = false;
+        btn.disabled = false;
+        btn.innerText = 'ยืนยันส่งคำขอ';
+        showFormMsg('เกิดข้อผิดพลาด: ' + err, false);
+      });
+    }
+
+    // ======================= หน้าอนุมัติ =======================
+    function applyStaticText() {
+      document.getElementById('lblPin').innerText = T.lblPin;
+      document.getElementById('otp').placeholder = T.pinPlaceholder;
+      document.getElementById('hintPin').innerText = T.hintPin;
+      document.getElementById('lblComment').innerText = T.lblComment;
+      document.getElementById('btnApprove').innerText = T.btnApprove;
+      document.getElementById('btnReject').innerText = T.btnReject;
+      document.getElementById('apQuestion').innerText = T.headerQuestion;
+    }
+
+    function computeFormatLabel(d) {
+      if (d.HalfDay) return d.HalfDayLabel || T.halfDay;
+      return T.fullDay;
+    }
+    function computeDurationLabel(d) {
+      if (d.HalfDay) return T.halfDay;
+      var s = new Date(d.StartDate), e = new Date(d.EndDate);
+      var days = Math.round((e - s) / 86400000) + 1;
+      if (isNaN(days) || days < 1) days = 1;
+      return days + T.day + (role === 'executive' && days > 1 ? 's' : '');
+    }
+
+    function extraRow(label, value) {
+      if (!value) return '';
+      return '<div class="ae-row"><span class="k">' + label + '</span><span class="v">' + value + '</span></div>';
+    }
+
     var currentOverlapWarning = '';
 
     function initApprovePage() {
       applyStaticText();
-      document.getElementById('approveApp').style.display = 'block';
       callApi('api_getRequestDetail', [requestId, role]).then(function (res) {
+        var skel = document.getElementById('skeletonApprove');
+        var content = document.getElementById('approveContent');
+        var appEl = document.getElementById('approveApp');
+
         if (!res.success) {
-          document.getElementById('detailCard').innerText = res.message;
+          skel.style.display = 'none';
+          appEl.style.display = 'block';
+          appEl.classList.add('fade-in');
+          document.getElementById('apGrid').innerHTML = '';
+          document.getElementById('apName').innerText = '';
+          document.getElementById('apExtra').innerHTML = '<div style="color:var(--danger)">' + res.message + '</div>';
+          document.getElementById('actionArea').style.display = 'none';
           return;
         }
+
         var d = res.data;
-        var card = document.getElementById('detailCard');
-        card.innerHTML =
-          row(T.labelRequestId, d.RequestID) +
-          row(T.labelEmployee, d.EmployeeDisplay || d.EmployeeName) +
-          row(T.labelDept, d.DepartmentDisplay || d.Department) +
-          row(T.labelType, d.LeaveTypeDisplay || d.LeaveType) +
-          row(T.labelDates, d.HalfDay
-            ? fmtDate(d.StartDate) + ' (' + d.HalfDayLabel + ')'
-            : fmtDate(d.StartDate) + T.to + fmtDate(d.EndDate)) +
-          row(T.labelReason, d.Reason) +
-          row(T.labelStatus, d.StatusLabel || d.Status);
+        document.getElementById('apName').innerText = d.EmployeeDisplay || d.EmployeeName;
+
+        document.getElementById('apGrid').innerHTML =
+          '<div><div class="ag-label">' + T.labelType + '</div><div class="ag-value">' + (d.LeaveTypeDisplay || d.LeaveType) + '</div></div>' +
+          '<div><div class="ag-label">' + T.labelFormat + '</div><div class="ag-value">' + computeFormatLabel(d) + '</div></div>' +
+          '<div><div class="ag-label">' + T.labelDates + '</div><div class="ag-value">' + (d.HalfDay ? fmtDate(d.StartDate) : fmtDate(d.StartDate) + T.to + fmtDate(d.EndDate)) + '</div></div>' +
+          '<div><div class="ag-label">' + T.labelDuration + '</div><div class="ag-value">' + computeDurationLabel(d) + '</div></div>';
+
+        var extraHtml =
+          extraRow(T.labelPosition, d.EmployeePosition) +
+          extraRow(T.labelDept, d.DepartmentDisplay || d.Department) +
+          extraRow(T.labelRequestId, d.RequestID) +
+          extraRow(T.labelReason, d.Reason);
+        if (!d.Actionable) extraHtml += extraRow(T.labelStatus, d.StatusLabel || d.Status);
+
+        var extraEl = document.getElementById('apExtra');
+        extraEl.innerHTML = extraHtml;
 
         if (d.AttachmentUrl) {
           var link = document.createElement('a');
           link.href = d.AttachmentUrl;
           link.target = '_blank';
           link.rel = 'noopener';
-          link.style.cssText = 'display:block;margin-top:10px;color:#1B6CA8;font-weight:600;font-size:14px;';
+          link.className = 'attach-link';
           link.innerText = T.viewAttachment;
-          card.appendChild(link);
+          extraEl.appendChild(link);
         }
 
         if (d.OverlapWarning) {
           currentOverlapWarning = d.OverlapWarning;
           var warn = document.createElement('div');
-          warn.style.cssText = 'margin-top:10px;padding:10px;border-radius:6px;background:#FFF3DC;color:#8A5200;font-size:14px;';
+          warn.className = 'warn-box';
           warn.innerText = '⚠ ' + d.OverlapWarning;
-          card.appendChild(warn);
+          extraEl.appendChild(warn);
         }
 
         // คำขอนี้ถูกดำเนินการไปแล้ว (อนุมัติ/ปฏิเสธไปแล้ว) - ซ่อนช่อง PIN/ปุ่ม แล้วโชว์สถานะแทน
         if (!d.Actionable) {
           document.getElementById('actionArea').style.display = 'none';
+        }
+
+        // โชว์ทุกอย่างพร้อมกันทีเดียวหลังข้อมูลครบ (ไม่ทยอยขึ้นทีละส่วน)
+        skel.style.display = 'none';
+        appEl.style.display = 'block';
+        appEl.classList.add('fade-in');
+
+        if (!d.Actionable) {
           showApproveMsg(T.alreadyProcessed + (d.StatusLabel || d.Status), true);
         }
-      }).catch(function (err) { showApproveMsg(T.error + err, false); });
+      }).catch(function (err) {
+        document.getElementById('skeletonApprove').style.display = 'none';
+        var appEl = document.getElementById('approveApp');
+        appEl.style.display = 'block';
+        appEl.classList.add('fade-in');
+        showApproveMsg(T.error + err, false);
+      });
     }
 
     function showApproveMsg(text, ok) {
@@ -428,20 +686,48 @@
       el.innerText = text;
     }
 
+    // ปุ่ม "ไม่อนุมัติ" เริ่มต้นเป็นสีเทากดไม่ได้ จนกว่าจะเริ่มกรอกเหตุผล (Comment) อย่างน้อย 1 หลัก (กันกดโดยไม่ตั้งใจ)
+    function checkRejectEnable() {
+      var btn = document.getElementById('btnReject');
+      var has = document.getElementById('comment').value.trim().length > 0;
+      btn.disabled = !has;
+      btn.classList.toggle('enabled', has);
+    }
+
+    // ช่อง PIN: โชว์เฉพาะหลักล่าสุดที่เพิ่งกรอก หลักอื่นซ่อนเป็น * (เช่น ***7)
+    var otpReal = '';
+    function onOtpInput() {
+      var el = document.getElementById('otp');
+      var v = el.value.replace(/[^0-9]/g, '');
+      if (v.length > otpReal.length) {
+        otpReal += v.slice(otpReal.length);
+      } else {
+        otpReal = v.length < otpReal.length ? otpReal.slice(0, v.length) : otpReal;
+      }
+      otpReal = otpReal.slice(0, 8);
+      var masked = otpReal.length > 1 ? '*'.repeat(otpReal.length - 1) + otpReal.slice(-1) : otpReal;
+      el.value = masked;
+    }
+    document.getElementById('otp').addEventListener('input', onOtpInput);
+
     // กันสแปม: ถ้ากำลังส่งผลอนุมัติ/ไม่อนุมัติอยู่ ห้ามกดซ้ำอีก
     var isApproving = false;
     function setApproveButtonsBusy(busy) {
       var btnApprove = document.getElementById('btnApprove');
       var btnReject = document.getElementById('btnReject');
       btnApprove.disabled = busy;
-      btnReject.disabled = busy;
       btnApprove.innerText = busy ? T.sending : T.btnApprove;
       btnReject.innerText = busy ? T.sending : T.btnReject;
+      if (busy) {
+        btnReject.disabled = true;
+      } else {
+        checkRejectEnable();
+      }
     }
 
     function decide(decision) {
       if (isApproving) { __log('decide blocked (already submitting)'); return; }
-      var otp = document.getElementById('otp').value.trim();
+      var otp = otpReal.trim();
       if (!otp) { showApproveMsg(T.needPin, false); return; }
       if (decision === 'reject' && !document.getElementById('comment').value.trim()) {
         showApproveMsg(T.needComment, false); return;
@@ -453,9 +739,11 @@
 
       isApproving = true;
       setApproveButtonsBusy(true);
+      showSpinner(T.sendingOverlayApprove);
 
       callApi('api_approve', [requestId, role, otp, profile.userId, profile.displayName, decision, document.getElementById('comment').value])
         .then(function (res) {
+          hideSpinner();
           showApproveMsg(res.message, res.success);
           if (res.success) {
             window.alert(res.message);
@@ -468,6 +756,7 @@
             setApproveButtonsBusy(false);
           }
         }).catch(function (err) {
+          hideSpinner();
           isApproving = false;
           setApproveButtonsBusy(false);
           showApproveMsg(T.error + err, false);
