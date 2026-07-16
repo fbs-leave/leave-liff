@@ -304,7 +304,7 @@
     var T = role === 'executive' ? T_EN : T_TH;
 
     // เวอร์ชันโค้ด: เอาไว้เช็คว่าไฟล์ที่ GitHub เป็นเวอร์ชันล่าสุดจริงมั้ย (เทียบกับที่ผมส่งให้)
-    var CODE_VERSION = 'v7-uxrefresh-2026-07-16';
+    var CODE_VERSION = 'v8-pinfix-2026-07-16';
     __log('code version: ' + CODE_VERSION);
     __log('page started, LIFF_ID=' + LIFF_ID + ', mode=' + (requestId ? 'approve(' + role + ')' : 'form'));
 
@@ -695,20 +695,40 @@
     }
 
     // ช่อง PIN: โชว์เฉพาะหลักล่าสุดที่เพิ่งกรอก หลักอื่นซ่อนเป็น * (เช่น ***7)
+    // เก็บค่า PIN จริงไว้ใน otpReal แยกจากสิ่งที่โชว์บนจอเสมอ (ห้ามอ่านค่ากลับจากช่องที่ถูก mask ไปแล้ว
+    // เพราะเป็นสาเหตุของบั๊กก่อนหน้านี้ที่กรอกได้แค่ 2 หลักแล้วหยุดรับเลขเพิ่ม)
     var otpReal = '';
-    function onOtpInput() {
-      var el = document.getElementById('otp');
-      var v = el.value.replace(/[^0-9]/g, '');
-      if (v.length > otpReal.length) {
-        otpReal += v.slice(otpReal.length);
-      } else {
-        otpReal = v.length < otpReal.length ? otpReal.slice(0, v.length) : otpReal;
-      }
-      otpReal = otpReal.slice(0, 8);
+    var otpEl = document.getElementById('otp');
+    function renderOtpMask() {
       var masked = otpReal.length > 1 ? '*'.repeat(otpReal.length - 1) + otpReal.slice(-1) : otpReal;
-      el.value = masked;
+      otpEl.value = masked;
     }
-    document.getElementById('otp').addEventListener('input', onOtpInput);
+    if ('onbeforeinput' in otpEl) {
+      otpEl.addEventListener('beforeinput', function (e) {
+        e.preventDefault();
+        if (e.inputType === 'insertText' || e.inputType === 'insertFromPaste' || e.inputType === 'insertCompositionText') {
+          var digits = (e.data || '').replace(/[^0-9]/g, '');
+          if (digits) { otpReal = (otpReal + digits).slice(0, 8); }
+        } else if (e.inputType === 'deleteContentBackward' || e.inputType === 'deleteContentForward' || e.inputType === 'deleteByCut') {
+          otpReal = otpReal.slice(0, -1);
+        } else if (e.inputType && e.inputType.indexOf('deleteHardLine') === 0) {
+          otpReal = '';
+        }
+        renderOtpMask();
+      });
+      otpEl.addEventListener('paste', function (e) {
+        e.preventDefault();
+        var text = ((e.clipboardData || window.clipboardData || {}).getData && (e.clipboardData || window.clipboardData).getData('text')) || '';
+        var digits = text.replace(/[^0-9]/g, '');
+        if (digits) { otpReal = (otpReal + digits).slice(0, 8); renderOtpMask(); }
+      });
+    } else {
+      // เบราว์เซอร์รุ่นเก่าที่ไม่รองรับ beforeinput: ปิดการซ่อนเลข PIN ไว้ก่อน แต่ยังกรอกได้ครบทุกหลักแน่นอน
+      otpEl.addEventListener('input', function () {
+        otpReal = otpEl.value.replace(/[^0-9]/g, '').slice(0, 8);
+        otpEl.value = otpReal;
+      });
+    }
 
     // กันสแปม: ถ้ากำลังส่งผลอนุมัติ/ไม่อนุมัติอยู่ ห้ามกดซ้ำอีก
     var isApproving = false;
