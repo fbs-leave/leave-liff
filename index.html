@@ -270,7 +270,7 @@
       confirmApprove: 'ยืนยันการอนุมัติคำขอนี้ใช่หรือไม่?',
       confirmReject: 'ยืนยันการไม่อนุมัติคำขอนี้ใช่หรือไม่?',
       alreadyProcessed: 'คำขอนี้ดำเนินการไปแล้ว สถานะปัจจุบัน: ',
-      viewAttachment: 'ดูรูปภาพแนบ',
+      viewAttachment: 'แตะรูปเพื่อดูขนาดเต็ม',
       sending: 'กำลังส่ง...',
       sendingOverlayApprove: 'กำลังบันทึกผลการอนุมัติ...',
       fullDay: 'เต็มวัน', halfDay: 'ครึ่งวัน', day: ' วัน',
@@ -290,7 +290,7 @@
       confirmApprove: 'Confirm approval of this request?',
       confirmReject: 'Confirm rejection of this request?',
       alreadyProcessed: 'This request has already been processed. Current status: ',
-      viewAttachment: 'View attached photo',
+      viewAttachment: 'Tap photo to view full size',
       sending: 'Sending...',
       sendingOverlayApprove: 'Saving your decision...',
       fullDay: 'Full day', halfDay: 'Half day', day: ' day',
@@ -304,7 +304,7 @@
     var T = role === 'executive' ? T_EN : T_TH;
 
     // เวอร์ชันโค้ด: เอาไว้เช็คว่าไฟล์ที่ GitHub เป็นเวอร์ชันล่าสุดจริงมั้ย (เทียบกับที่ผมส่งให้)
-    var CODE_VERSION = 'v8-pinfix-2026-07-16';
+    var CODE_VERSION = 'v9-inlinephoto-2026-07-17';
     __log('code version: ' + CODE_VERSION);
     __log('page started, LIFF_ID=' + LIFF_ID + ', mode=' + (requestId ? 'approve(' + role + ')' : 'form'));
 
@@ -639,14 +639,29 @@
         var extraEl = document.getElementById('apExtra');
         extraEl.innerHTML = extraHtml;
 
+        // แสดงรูปหลักฐาน (เช่น ใบรับรองแพทย์) ให้เห็นเลยตรงหน้าอนุมัติ ไม่ต้องกดลิงก์แยกไปเปิดอีกที
         if (d.AttachmentUrl) {
-          var link = document.createElement('a');
-          link.href = d.AttachmentUrl;
-          link.target = '_blank';
-          link.rel = 'noopener';
-          link.className = 'attach-link';
-          link.innerText = T.viewAttachment;
-          extraEl.appendChild(link);
+          var photoLink = document.createElement('a');
+          photoLink.href = d.AttachmentUrl;
+          photoLink.target = '_blank';
+          photoLink.rel = 'noopener';
+          photoLink.style.cssText = 'display:block;margin-top:14px;';
+          var photoImg = document.createElement('img');
+          photoImg.src = d.AttachmentImageUrl || d.AttachmentUrl;
+          photoImg.alt = T.viewAttachment;
+          photoImg.style.cssText = 'width:100%;border-radius:var(--r-input);display:block;box-shadow:var(--shadow);';
+          photoImg.onerror = function () {
+            // เผื่อรูปฝังไม่ขึ้น (เช่นไฟล์ใหญ่ไป/ลิงก์ยังไม่พร้อม) ให้เหลือแค่ลิงก์ให้กดเปิดแทน
+            this.style.display = 'none';
+          };
+          photoLink.appendChild(photoImg);
+          extraEl.appendChild(photoLink);
+
+          var photoCaption = document.createElement('div');
+          photoCaption.className = 'attach-link';
+          photoCaption.style.textAlign = 'center';
+          photoCaption.innerText = T.viewAttachment;
+          extraEl.appendChild(photoCaption);
         }
 
         if (d.OverlapWarning) {
