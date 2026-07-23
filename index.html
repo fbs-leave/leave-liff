@@ -119,6 +119,16 @@
   .req-card-btns a{ flex:1; text-align:center; padding:11px; border-radius:var(--r-btn); font-size:14.5px; font-weight:700; text-decoration:none; }
   .req-card-btn-reject{ background:var(--danger-tint); color:var(--danger); }
   .req-card-btn-approve{ background:var(--primary); color:#fff; }
+
+  /* หน้ากรอก PIN 4 หลัก (พินเกท) ก่อนเข้าหน้ารายการ/หน้าอนุมัติ */
+  .pin-gate-subtitle{ font-size:var(--fs-body); color:var(--ink2); margin-top:4px; }
+  .pin-box-row{ display:flex; gap:12px; justify-content:center; margin-top:26px; }
+  .pin-box{ width:54px; height:60px; text-align:center; font-size:24px; font-weight:700; padding:0; margin-top:0;
+    border:1.5px solid var(--line); border-radius:var(--r-input); background:var(--surface); color:var(--ink); }
+  .pin-box:focus{ outline:none; border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-tint); }
+  .pin-box.error{ border-color:var(--danger); }
+  @keyframes pinShake{ 10%,90%{transform:translateX(-1px);} 20%,80%{transform:translateX(2px);} 30%,50%,70%{transform:translateX(-5px);} 40%,60%{transform:translateX(5px);} }
+  .pin-box-row.shake{ animation:pinShake .4s; }
 </style>
 </head>
 <body>
@@ -148,8 +158,33 @@
     <div class="skel skel-block" style="height:120px;margin-top:14px;border-radius:var(--r-card);"></div>
     <div class="skel skel-block" style="height:120px;margin-top:10px;border-radius:var(--r-card);"></div>
   </div>
+  <div id="skeletonGate" class="card" style="display:none;">
+    <div class="skel skel-line" style="width:45%;height:20px;"></div>
+    <div class="skel skel-line" style="width:75%;margin-top:10px;"></div>
+    <div style="display:flex;gap:12px;margin-top:26px;justify-content:center;">
+      <div class="skel" style="width:54px;height:60px;border-radius:var(--r-input);"></div>
+      <div class="skel" style="width:54px;height:60px;border-radius:var(--r-input);"></div>
+      <div class="skel" style="width:54px;height:60px;border-radius:var(--r-input);"></div>
+      <div class="skel" style="width:54px;height:60px;border-radius:var(--r-input);"></div>
+    </div>
+  </div>
 
   <div id="debugPanel"></div>
+
+  <!-- หน้ากรอก PIN 4 หลัก (พินเกท) ก่อนเข้าหน้ารายการ/หน้าอนุมัติ -->
+  <div id="pinGateApp" style="display:none;">
+    <div class="card">
+      <h2 class="page-title" id="pinGateTitle"></h2>
+      <div class="pin-gate-subtitle" id="pinGateSubtitle"></div>
+      <div class="pin-box-row" id="pinBoxRow">
+        <input type="tel" inputmode="numeric" maxlength="1" class="pin-box" data-idx="0">
+        <input type="tel" inputmode="numeric" maxlength="1" class="pin-box" data-idx="1">
+        <input type="tel" inputmode="numeric" maxlength="1" class="pin-box" data-idx="2">
+        <input type="tel" inputmode="numeric" maxlength="1" class="pin-box" data-idx="3">
+      </div>
+      <div id="pinGateMsg" class="msgbox"></div>
+    </div>
+  </div>
 
   <!-- หน้ารายการรออนุมัติ/ประวัติ (หัวหน้างาน/ผู้บริหาร) -->
   <div id="listApp" style="display:none;">
@@ -326,7 +361,12 @@
       listTitle: 'ลางาน', tabPending: 'รอดำเนินการ', tabHistory: 'ประวัติ',
       searchPlaceholder: 'ค้นหาชื่อพนักงาน', noData: 'ยังไม่มีข้อมูล',
       remainingAfterApproval: 'วันลาคงเหลือหลังอนุมัติ: ',
-      overlapNote: 'มีพนักงานฝ่ายผลิตลาช่วงเดียวกันแล้ว '
+      overlapNote: 'มีพนักงานฝ่ายผลิตลาช่วงเดียวกันแล้ว ',
+      pinGateTitle: 'ยืนยันตัวตน',
+      pinGateSubtitleList: 'กรุณากรอกรหัส PIN 4 หลักของคุณ เพื่อเข้าดูรายการคำขอลาทั้งหมด',
+      pinGateSubtitleApprove: 'กรุณากรอกรหัส PIN 4 หลักของคุณ เพื่อเข้าหน้าอนุมัติคำขอนี้',
+      pinGateWrong: 'รหัส PIN ไม่ถูกต้อง กรุณาลองใหม่',
+      sendingOverlayVerify: 'กำลังตรวจสอบรหัส...'
     };
     var T_EN = {
       roleTitleSupervisor: 'Approval Page (Supervisor)', roleTitleExecutive: 'Approval Page (Executive)',
@@ -350,7 +390,12 @@
       listTitle: 'Leave Requests', tabPending: 'Pending', tabHistory: 'History',
       searchPlaceholder: 'Search employee name', noData: 'No data yet',
       remainingAfterApproval: 'Remaining after approval: ',
-      overlapNote: ' Production employees on leave same period'
+      overlapNote: ' Production employees on leave same period',
+      pinGateTitle: 'Verify Identity',
+      pinGateSubtitleList: 'Enter your 4-digit PIN to view the leave requests list',
+      pinGateSubtitleApprove: 'Enter your 4-digit PIN to open this approval page',
+      pinGateWrong: 'Incorrect PIN, please try again',
+      sendingOverlayVerify: 'Verifying PIN...'
     };
 
     var profile = null;
@@ -361,15 +406,48 @@
     var T = role === 'executive' ? T_EN : T_TH;
 
     // เวอร์ชันโค้ด: เอาไว้เช็คว่าไฟล์ที่ GitHub เป็นเวอร์ชันล่าสุดจริงมั้ย (เทียบกับที่ผมส่งให้)
-    var CODE_VERSION = 'v11-listfixes-2026-07-23';
+    var CODE_VERSION = 'v12-pingate-2026-07-23';
     __log('code version: ' + CODE_VERSION);
 
-    var pageMode = isListMode ? 'list' : (requestId ? 'approve' : 'form');
-    var skeletonId = isListMode ? 'skeletonList' : (requestId ? 'skeletonApprove' : 'skeletonForm');
-    __log('page started, LIFF_ID=' + LIFF_ID + ', mode=' + pageMode + (pageMode !== 'form' ? '(' + role + ')' : ''));
+    // ======================= แคช PIN ที่ยืนยันผ่านแล้ว (กันถามซ้ำ) =======================
+    // เก็บไว้ใน localStorage แยกตาม role นานสูงสุด 12 ชม. หลังจากนั้นต้องกรอกใหม่
+    // (localStorage ใช้ได้ปกติที่นี่เพราะเป็นเว็บที่ deploy จริงบน GitHub Pages ไม่ใช่ artifact/preview ของ Claude)
+    var PIN_CACHE_MS = 12 * 60 * 60 * 1000;
+    function getCachedPin(forRole) {
+      try {
+        var raw = localStorage.getItem('leavePinAuth_' + forRole);
+        if (!raw) return null;
+        var obj = JSON.parse(raw);
+        if (!obj || !obj.pin || !obj.ts) return null;
+        if (Date.now() - obj.ts > PIN_CACHE_MS) { localStorage.removeItem('leavePinAuth_' + forRole); return null; }
+        return obj.pin;
+      } catch (e) { return null; }
+    }
+    function setCachedPin(forRole, pin) {
+      try { localStorage.setItem('leavePinAuth_' + forRole, JSON.stringify({ pin: pin, ts: Date.now() })); } catch (e) {}
+    }
+    function clearCachedPin(forRole) {
+      try { localStorage.removeItem('leavePinAuth_' + forRole); } catch (e) {}
+    }
+
+    // โหมดรายการ (list) และโหมดอนุมัติรายคำขอ (approve) ทั้งคู่ต้องผ่านการกรอก PIN 4 หลักก่อน (พินเกท)
+    // ถ้ามี PIN ที่ยืนยันผ่านไปแล้วเมื่อไม่นานมานี้ (ยังไม่หมดอายุ) ให้ข้ามหน้าพินไปเลย ไม่ต้องกรอกซ้ำ
+    var cachedRolePin = (isListMode || requestId) ? getCachedPin(role) : null;
+    var needPinGate = (isListMode || requestId) && !cachedRolePin;
+    var otpReal = ''; // เก็บ PIN จริงของหัวหน้างาน/ผู้บริหาร ไว้ใช้ตอนกดอนุมัติ/ไม่อนุมัติ (มาจากพินเกท หรือจากช่องกรอกในหน้าอนุมัติ)
+    var pinPreVerified = false; // true = ผ่านพินเกทมาแล้ว (หรือมีแคชอยู่แล้ว) ไม่ต้องโชว์ช่องกรอก PIN ซ้ำในหน้าอนุมัติ
+
+    var pageMode = needPinGate ? 'pingate' : (isListMode ? 'list' : (requestId ? 'approve' : 'form'));
+    var skeletonId = needPinGate ? 'skeletonGate' : (isListMode ? 'skeletonList' : (requestId ? 'skeletonApprove' : 'skeletonForm'));
+    __log('page started, LIFF_ID=' + LIFF_ID + ', mode=' + pageMode + (pageMode !== 'form' ? '(' + role + ')' : '') + (cachedRolePin ? ' [cached PIN found]' : ''));
 
     // แสดง skeleton ที่ตรงกับโหมดของหน้านี้ทันที (ไม่ต้องรอ LIFF โหลดเสร็จก่อน)
     document.getElementById(skeletonId).style.display = 'block';
+
+    function applyVerifiedPin(pin) {
+      otpReal = pin;
+      pinPreVerified = true;
+    }
 
     if (typeof liff === 'undefined') {
       document.getElementById(skeletonId).style.display = 'none';
@@ -385,12 +463,17 @@
         if (!p) return;
         profile = p;
         __log('profile ok: ' + p.displayName);
-        if (isListMode) {
-          initListPage();
-        } else if (requestId) {
-          initApprovePage();
+        if (needPinGate) {
+          initPinGatePage();
         } else {
-          initFormPage();
+          if (cachedRolePin) applyVerifiedPin(cachedRolePin);
+          if (isListMode) {
+            initListPage();
+          } else if (requestId) {
+            initApprovePage();
+          } else {
+            initFormPage();
+          }
         }
       }).catch(function (err) {
         __log('LIFF ERROR: ' + (err && err.message));
@@ -399,6 +482,82 @@
         ld2.style.display = 'block';
         ld2.innerText = 'เกิดข้อผิดพลาดในการเชื่อมต่อ LINE: ' + (err && err.message ? err.message : err);
       });
+    }
+
+    // ======================= หน้ากรอก PIN 4 หลัก (พินเกท) =======================
+    function initPinGatePage() {
+      document.getElementById('skeletonGate').style.display = 'none';
+      var app = document.getElementById('pinGateApp');
+      app.style.display = 'block';
+      app.classList.add('fade-in');
+      document.getElementById('pinGateTitle').innerText = T.pinGateTitle;
+      document.getElementById('pinGateSubtitle').innerText = isListMode ? T.pinGateSubtitleList : T.pinGateSubtitleApprove;
+      setupPinBoxes(function (pin) { verifyGatePin(pin); });
+    }
+
+    function setupPinBoxes(onComplete) {
+      var boxes = Array.prototype.slice.call(document.querySelectorAll('#pinBoxRow .pin-box'));
+      boxes.forEach(function (box, i) {
+        box.addEventListener('input', function () {
+          box.value = box.value.replace(/[^0-9]/g, '').slice(-1);
+          box.classList.remove('error');
+          if (box.value && i < boxes.length - 1) boxes[i + 1].focus();
+          var pin = boxes.map(function (b) { return b.value; }).join('');
+          if (pin.length === boxes.length) onComplete(pin);
+        });
+        box.addEventListener('keydown', function (e) {
+          if (e.key === 'Backspace' && !box.value && i > 0) boxes[i - 1].focus();
+        });
+      });
+      boxes[0].focus();
+    }
+    function clearPinBoxes() {
+      var boxes = document.querySelectorAll('#pinBoxRow .pin-box');
+      boxes.forEach(function (b) { b.value = ''; b.classList.remove('error'); });
+      if (boxes[0]) boxes[0].focus();
+    }
+    function shakePinBoxes() {
+      var row = document.getElementById('pinBoxRow');
+      document.querySelectorAll('#pinBoxRow .pin-box').forEach(function (b) { b.classList.add('error'); });
+      row.classList.add('shake');
+      setTimeout(function () { row.classList.remove('shake'); }, 400);
+    }
+
+    function verifyGatePin(pin) {
+      var msg = document.getElementById('pinGateMsg');
+      msg.style.display = 'none';
+      showSpinner(T.sendingOverlayVerify);
+      callApi('api_verifyPin', [role, pin]).then(function (res) {
+        hideSpinner();
+        if (res.success) {
+          setCachedPin(role, pin);
+          proceedAfterGate(pin);
+        } else {
+          shakePinBoxes();
+          msg.style.display = 'block';
+          msg.className = 'msgbox err';
+          msg.innerText = res.message || T.pinGateWrong;
+          // รอให้แอนิเมชันสั่น + กรอบสีแดงแสดงให้เห็นก่อน ค่อยเคลียร์ช่อง (เคลียร์ทันทีจะทำให้มองไม่เห็นกรอบแดงเลย)
+          setTimeout(clearPinBoxes, 400);
+        }
+      }).catch(function (err) {
+        hideSpinner();
+        shakePinBoxes();
+        msg.style.display = 'block';
+        msg.className = 'msgbox err';
+        msg.innerText = T.error + err;
+        setTimeout(clearPinBoxes, 400);
+      });
+    }
+
+    function proceedAfterGate(pin) {
+      document.getElementById('pinGateApp').style.display = 'none';
+      applyVerifiedPin(pin);
+      if (isListMode) {
+        initListPage();
+      } else if (requestId) {
+        initApprovePage();
+      }
     }
 
     // ======================= หน้าฟอร์มยื่นคำขอลา =======================
@@ -778,6 +937,12 @@
 
     function initApprovePage() {
       applyStaticText();
+      // ถ้าผ่านพินเกทมาแล้ว (หรือมี PIN ที่ยืนยันไว้แคชอยู่) ไม่ต้องโชว์ช่องกรอก PIN ซ้ำอีก
+      if (pinPreVerified) {
+        document.getElementById('lblPin').style.display = 'none';
+        document.getElementById('otp').style.display = 'none';
+        document.getElementById('hintPin').style.display = 'none';
+      }
       callApi('api_getRequestDetail', [requestId, role]).then(function (res) {
         var skel = document.getElementById('skeletonApprove');
         var content = document.getElementById('approveContent');
@@ -887,7 +1052,7 @@
     // ช่อง PIN: โชว์เฉพาะหลักล่าสุดที่เพิ่งกรอก หลักอื่นซ่อนเป็น * (เช่น ***7)
     // เก็บค่า PIN จริงไว้ใน otpReal แยกจากสิ่งที่โชว์บนจอเสมอ (ห้ามอ่านค่ากลับจากช่องที่ถูก mask ไปแล้ว
     // เพราะเป็นสาเหตุของบั๊กก่อนหน้านี้ที่กรอกได้แค่ 2 หลักแล้วหยุดรับเลขเพิ่ม)
-    var otpReal = '';
+    // หมายเหตุ: ตัวแปร otpReal ประกาศไว้ด้านบนแล้ว (ใกล้ๆ ตรรกะพินเกท) เพราะต้องใช้ตั้งแต่ก่อนเข้าโหมดต่างๆ ไม่ประกาศซ้ำที่นี่
     var otpEl = document.getElementById('otp');
     function renderOtpMask() {
       var masked = otpReal.length > 1 ? '*'.repeat(otpReal.length - 1) + otpReal.slice(-1) : otpReal;
@@ -962,6 +1127,17 @@
             }
             // สำเร็จแล้ว ไม่ต้องเปิดปุ่มกลับมาให้กดซ้ำอีก
           } else {
+            // ถ้า PIN ที่แคชไว้ (จากพินเกท) ใช้ไม่ได้แล้ว (เช่น แอดมินเพิ่งเปลี่ยน PIN ใหม่หลังจากแคชไว้)
+            // ล้างแคชทิ้งแล้วเปิดช่องกรอก PIN กลับมาให้กรอกใหม่ แทนที่จะค้างล้มเหลวซ้ำๆ แบบไม่รู้สาเหตุ
+            if (pinPreVerified && /ไม่ถูกต้อง|Incorrect/.test(res.message || '')) {
+              clearCachedPin(role);
+              pinPreVerified = false;
+              otpReal = '';
+              renderOtpMask();
+              document.getElementById('lblPin').style.display = '';
+              document.getElementById('otp').style.display = '';
+              document.getElementById('hintPin').style.display = '';
+            }
             isApproving = false;
             setApproveButtonsBusy(false);
           }
