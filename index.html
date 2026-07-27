@@ -137,15 +137,26 @@
   }
 
   /* หน้าดูวันลาคงเหลือของตัวเอง (พนักงาน) */
-  .balance-hero{ background:var(--surface); border-radius:var(--r-card); padding:26px 20px; margin-top:12px; box-shadow:var(--shadow); text-align:center; }
-  .balance-hero-label{ font-size:var(--fs-label); color:var(--ink3); font-weight:600; }
-  .balance-hero-num{ font-size:46px; font-weight:800; color:var(--primary-dark); margin-top:8px; line-height:1; }
-  .balance-hero-sub{ font-size:var(--fs-hint); color:var(--ink3); margin-top:10px; }
-  .balance-section-title{ font-size:var(--fs-h2); font-weight:700; color:var(--ink); margin:22px 0 4px; }
-  .bh-card{ background:var(--surface); border-radius:var(--r-card); padding:14px 16px; margin-top:10px; box-shadow:var(--shadow); }
-  .bh-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
-  .bh-type{ font-size:var(--fs-body); font-weight:600; color:var(--ink); }
-  .bh-meta{ font-size:13px; color:var(--ink3); margin-top:3px; }
+  /* หน้าวันลาคงเหลือ: การ์ดรายประเภท (ไอคอนเดียวกับตอนเลือกประเภทในฟอร์มขอลา) */
+  .bal-card{ display:flex; align-items:center; gap:12px; background:var(--surface); border-radius:var(--r-card); padding:14px 16px; margin-top:10px; box-shadow:var(--shadow); }
+  .bal-icon{ width:44px; height:44px; border-radius:50%; background:var(--primary-tint); display:flex; align-items:center; justify-content:center; font-size:22px; flex-shrink:0; }
+  .bal-info{ flex:1; min-width:0; }
+  .bal-name{ font-size:var(--fs-body); font-weight:700; color:var(--ink); }
+  .bal-sub{ font-size:13px; color:var(--ink3); margin-top:2px; }
+  /* 44x44 ตามเกณฑ์ขั้นต่ำของ touch target (ไม่ใช่ 34x34 เดิม) เพราะเป็นหน้าที่ใช้บนมือถือล้วน */
+  .bal-add{ width:44px; height:44px; padding:0; border-radius:50%; border:none; background:var(--primary); color:#fff; font-size:20px; font-weight:700; line-height:1; display:flex; align-items:center; justify-content:center; cursor:pointer; text-decoration:none; flex-shrink:0; }
+  .bal-add.disabled{ background:#D8D8DE; color:#9A9AA5; cursor:not-allowed; pointer-events:none; }
+  .bal-link-row{ text-align:center; margin-top:20px; }
+  .bal-link-row a{ color:var(--primary-dark); font-weight:700; font-size:14px; text-decoration:none; }
+
+  /* หน้าประวัติการลาทั้งหมด (พนักงาน) — ใช้ .req-card/.req-badge ชุดเดียวกับหน้ารายการรออนุมัติ */
+  .hist-approver-line{ font-size:13px; color:var(--ok); margin-top:4px; }
+  .hist-comment-line{ font-size:13px; color:var(--danger); margin-top:4px; }
+
+  /* ปุ่มถ่ายรูป/เลือกรูปสำหรับแนบไฟล์ลาป่วย */
+  .photo-btn-row{ display:flex; gap:10px; margin-top:6px; }
+  .photo-btn{ flex:1; padding:12px; border-radius:var(--r-input); border:1.5px solid var(--line); background:var(--surface); font-size:14px; font-weight:600; color:var(--ink2); text-align:center; cursor:pointer; }
+  .photo-btn:active{ background:var(--primary-tint); border-color:var(--primary); color:var(--primary-dark); }
 </style>
 </head>
 <body>
@@ -187,9 +198,14 @@
   </div>
   <div id="skeletonBalance" class="card" style="display:none;">
     <div class="skel skel-line" style="width:50%;height:16px;margin:0 auto;"></div>
-    <div class="skel skel-line" style="width:35%;height:40px;margin:14px auto;"></div>
     <div class="skel skel-block" style="height:70px;margin-top:20px;"></div>
     <div class="skel skel-block" style="height:70px;margin-top:10px;"></div>
+    <div class="skel skel-block" style="height:70px;margin-top:10px;"></div>
+  </div>
+  <div id="skeletonHistory" style="display:none;">
+    <div class="skel skel-line" style="width:40%;height:20px;"></div>
+    <div class="skel skel-block" style="height:110px;margin-top:14px;border-radius:var(--r-card);"></div>
+    <div class="skel skel-block" style="height:110px;margin-top:10px;border-radius:var(--r-card);"></div>
   </div>
 
   <div id="debugPanel"></div>
@@ -198,15 +214,19 @@
   <div id="balanceApp" style="display:none;">
     <h2 class="page-title">วันลาคงเหลือของฉัน</h2>
     <div id="balanceWho" class="subtle"></div>
-    <div class="balance-hero">
-      <div class="balance-hero-label">วันลาพักร้อนคงเหลือ</div>
-      <div class="balance-hero-num" id="balanceNum">-</div>
-      <div class="balance-hero-sub" id="balanceSub"></div>
-    </div>
-    <div class="balance-section-title">ประวัติการลาล่าสุด</div>
-    <div id="balanceHistory"></div>
-    <div id="balanceEmpty" class="subtle" style="display:none;text-align:center;padding:30px 0;">ยังไม่มีประวัติการลา</div>
+    <div id="balanceCards"></div>
+    <div class="subtle" style="margin-top:14px;">* ตัวเลขนี้เป็นข้อมูลอ้างอิงเบื้องต้น การอนุมัติจริงขึ้นอยู่กับดุลยพินิจของหัวหน้างาน/ผู้บริหาร</div>
     <div id="balanceMsg" class="msgbox"></div>
+    <div class="bal-link-row"><a href="?history=1">ดูประวัติการลาทั้งหมด &rarr;</a></div>
+  </div>
+
+  <!-- หน้าประวัติการลาทั้งหมดของตัวเอง (พนักงาน) -->
+  <div id="historyApp" style="display:none;">
+    <h2 class="page-title">ประวัติการลาของฉัน</h2>
+    <div id="historyWho" class="subtle"></div>
+    <div id="historyCards"></div>
+    <div id="historyEmpty" class="subtle" style="display:none;text-align:center;padding:30px 0;">ยังไม่มีข้อมูล</div>
+    <div id="historyMsg" class="msgbox"></div>
   </div>
 
   <!-- หน้ากรอก PIN 4 หลัก (พินเกท) ก่อนเข้าหน้ารายการ/หน้าอนุมัติ -->
@@ -256,7 +276,12 @@
 
       <div id="photoWrap" style="display:none;">
         <label>แนบรูปภาพ (จำเป็นสำหรับการลาป่วย)</label>
-        <input type="file" accept="image/*" id="sickPhoto" onchange="onPhotoSelected()">
+        <div class="photo-btn-row">
+          <div class="photo-btn" onclick="document.getElementById('sickPhotoCamera').click()">📷 ถ่ายรูป</div>
+          <div class="photo-btn" onclick="document.getElementById('sickPhotoGallery').click()">🖼️ เลือกจากคลังภาพ</div>
+        </div>
+        <input type="file" accept="image/*" capture="environment" id="sickPhotoCamera" style="display:none;" onchange="onPhotoSelected(this)">
+        <input type="file" accept="image/*" id="sickPhotoGallery" style="display:none;" onchange="onPhotoSelected(this)">
         <div id="photoPreviewWrap" style="margin-top:8px; display:none;">
           <img id="photoPreview" style="max-width:100%;">
         </div>
@@ -442,10 +467,12 @@
     var role = params.get('role') || 'supervisor';
     var isListMode = params.get('list') === '1';
     var isBalanceMode = params.get('balance') === '1';
+    var isHistoryMode = params.get('history') === '1';
+    var presetLeaveType = params.get('type') || ''; // มาจากปุ่ม + ในหน้าวันลาคงเหลือ เพื่อ pre-select ประเภทลาในฟอร์ม
     var T = role === 'executive' ? T_EN : T_TH;
 
     // เวอร์ชันโค้ด: เอาไว้เช็คว่าไฟล์ที่ GitHub เป็นเวอร์ชันล่าสุดจริงมั้ย (เทียบกับที่ผมส่งให้)
-    var CODE_VERSION = 'v13-balance-2026-07-27';
+    var CODE_VERSION = 'v14-balance-cards-2026-07-27';
     __log('code version: ' + CODE_VERSION);
 
     // ======================= แคช PIN ที่ยืนยันผ่านแล้ว (กันถามซ้ำ) =======================
@@ -477,8 +504,8 @@
     var otpReal = ''; // เก็บ PIN จริงของหัวหน้างาน/ผู้บริหาร ไว้ใช้ตอนกดอนุมัติ/ไม่อนุมัติ (มาจากพินเกท หรือจากช่องกรอกในหน้าอนุมัติ)
     var pinPreVerified = false; // true = ผ่านพินเกทมาแล้ว (หรือมีแคชอยู่แล้ว) ไม่ต้องโชว์ช่องกรอก PIN ซ้ำในหน้าอนุมัติ
 
-    var pageMode = needPinGate ? 'pingate' : (isBalanceMode ? 'balance' : (isListMode ? 'list' : (requestId ? 'approve' : 'form')));
-    var skeletonId = needPinGate ? 'skeletonGate' : (isBalanceMode ? 'skeletonBalance' : (isListMode ? 'skeletonList' : (requestId ? 'skeletonApprove' : 'skeletonForm')));
+    var pageMode = needPinGate ? 'pingate' : (isBalanceMode ? 'balance' : (isHistoryMode ? 'history' : (isListMode ? 'list' : (requestId ? 'approve' : 'form'))));
+    var skeletonId = needPinGate ? 'skeletonGate' : (isBalanceMode ? 'skeletonBalance' : (isHistoryMode ? 'skeletonHistory' : (isListMode ? 'skeletonList' : (requestId ? 'skeletonApprove' : 'skeletonForm'))));
     __log('page started, LIFF_ID=' + LIFF_ID + ', mode=' + pageMode + (pageMode !== 'form' ? '(' + role + ')' : '') + (cachedRolePin ? ' [cached PIN found]' : ''));
 
     // แสดง skeleton ที่ตรงกับโหมดของหน้านี้ทันที (ไม่ต้องรอ LIFF โหลดเสร็จก่อน)
@@ -509,6 +536,8 @@
           if (cachedRolePin) applyVerifiedPin(cachedRolePin);
           if (isBalanceMode) {
             initBalancePage();
+          } else if (isHistoryMode) {
+            initHistoryPage();
           } else if (isListMode) {
             initListPage();
           } else if (requestId) {
@@ -613,6 +642,11 @@
       var app = document.getElementById('formApp');
       app.style.display = 'block';
       app.classList.add('fade-in');
+      // ถ้ามาจากปุ่ม + ในหน้าวันลาคงเหลือ (?type=...) ให้ pre-select ประเภทลานั้นให้เลย ไม่ต้องกดเลือกเอง
+      if (presetLeaveType) {
+        var presetBtn = document.querySelector('#leaveTypeGrid [data-value="' + presetLeaveType + '"]');
+        if (presetBtn) selectLeaveType(presetLeaveType, presetBtn);
+      }
       onLeaveTypeChange(); // ตั้งค่าเริ่มต้นให้ตรงกับประเภทการลาที่เลือกอยู่ตอนโหลดหน้า
     }
 
@@ -704,8 +738,8 @@
         reader.readAsDataURL(file);
       });
     }
-    function onPhotoSelected() {
-      var file = document.getElementById('sickPhoto').files[0];
+    function onPhotoSelected(inputEl) {
+      var file = inputEl && inputEl.files[0];
       if (!file) { photoDataUrl = ''; return; }
       __log('compressing photo...');
       readAndCompressImage(file).then(function (dataUrl) {
@@ -815,7 +849,8 @@
           showFormMsg('ส่งคำขอลาเรียบร้อยแล้ว เลขที่คำขอ ' + res.requestId + ' รอหัวหน้างานอนุมัติ', true);
           window.alert('ส่งคำขอลางานแล้ว');
           photoDataUrl = '';
-          document.getElementById('sickPhoto').value = '';
+          document.getElementById('sickPhotoCamera').value = '';
+          document.getElementById('sickPhotoGallery').value = '';
           document.getElementById('photoPreviewWrap').style.display = 'none';
           if (typeof liff !== 'undefined' && liff.isInClient && liff.isInClient()) {
             liff.closeWindow();
@@ -841,15 +876,24 @@
       if (status === 'PENDING_SUPERVISOR' || status === 'PENDING_EXECUTIVE') return 'pending';
       return 'rejected';
     }
-    function buildBalanceHistoryHtml(r) {
-      var dateLabel = r.HalfDay ? fmtDate(r.StartDate) : fmtDate(r.StartDate) + (r.StartDate !== r.EndDate ? (' ถึง ' + fmtDate(r.EndDate)) : '');
-      var durLabel = r.HalfDay ? (r.HalfDayLabel || 'ครึ่งวัน') : '';
-      return '<div class="bh-card"><div class="bh-row">' +
-        '<div><div class="bh-type">' + (r.LeaveType || '-') + '</div>' +
-        '<div class="bh-meta">📅 ' + dateLabel + (durLabel ? (' (' + durLabel + ')') : '') + '</div></div>' +
-        '<span class="req-badge ' + balanceBadgeClass(r.Status) + '">' + (r.StatusLabel || r.Status) + '</span>' +
-        '</div></div>';
+
+    // การ์ดวันลาคงเหลือรายประเภท: ไอคอนเดียวกับตอนเลือกประเภทในฟอร์มขอลา (LEAVE_EMOJI)
+    // ปุ่ม + เป็นสีเทากดไม่ได้ถ้าโควตาหมดแล้ว (remaining <= 0) ส่วนประเภทที่ไม่มีโควตา (quota === null) กดได้เสมอ
+    function buildBalanceCardHtml(b) {
+      var quotaLabel = (b.quota === null) ? 'ไม่จำกัด' : ('คงเหลือ ' + b.remaining + ' วัน จาก ' + b.quota + ' วัน');
+      var disabled = (b.quota !== null && b.remaining <= 0);
+      // ใช้ <button disabled> แทน <span> เฉยๆ ตอนกดไม่ได้ เพราะ aria-label บน span เปล่าไม่มีความหมายกับ screen reader (span ไม่มี role โดย default)
+      var addBtn = disabled
+        ? '<button type="button" class="bal-add disabled" disabled aria-label="โควตาหมดแล้ว สำหรับ' + b.type + '">+</button>'
+        : '<a class="bal-add" href="?type=' + encodeURIComponent(b.type) + '" aria-label="ยื่นคำขอ' + b.type + '">+</a>';
+      return '<div class="bal-card">' +
+        '<div class="bal-icon">' + (LEAVE_EMOJI[b.type] || '📄') + '</div>' +
+        '<div class="bal-info"><div class="bal-name">' + b.type + '</div>' +
+        '<div class="bal-sub">' + quotaLabel + '</div></div>' +
+        addBtn +
+        '</div>';
     }
+
     function initBalancePage() {
       document.getElementById('skeletonBalance').style.display = 'none';
       var app = document.getElementById('balanceApp');
@@ -858,29 +902,73 @@
       document.getElementById('balanceWho').innerText = profile.displayName || '';
 
       callApi('api_getMyLeaveBalance', [profile.userId]).then(function (res) {
+        var wrap = document.getElementById('balanceCards');
         if (!res.success) {
-          document.getElementById('balanceNum').innerText = '-';
+          wrap.innerHTML = '';
           var msg = document.getElementById('balanceMsg');
           msg.style.display = 'block';
           msg.className = 'msgbox err';
           msg.innerText = res.message || 'เกิดข้อผิดพลาด';
           return;
         }
-        document.getElementById('balanceNum').innerText = res.vacationRemaining;
-        document.getElementById('balanceSub').innerText =
-          'ใช้ไปแล้ว ' + res.vacationUsed + ' วัน จากโควตา ' + res.vacationQuota + ' วัน/ปี';
+        wrap.innerHTML = res.balances.map(buildBalanceCardHtml).join('');
+      }).catch(function (err) {
+        var msg = document.getElementById('balanceMsg');
+        msg.style.display = 'block';
+        msg.className = 'msgbox err';
+        msg.innerText = 'เกิดข้อผิดพลาด: ' + err;
+      });
+    }
 
-        var wrap = document.getElementById('balanceHistory');
-        var empty = document.getElementById('balanceEmpty');
-        if (!res.recentRequests || !res.recentRequests.length) {
+    // ======================= หน้าประวัติการลาทั้งหมดของตัวเอง (แยกจากหน้าวันลาคงเหลือ) =======================
+    function buildHistoryCardHtml(r) {
+      var dateLabel = r.HalfDay ? fmtDate(r.StartDate) : fmtDate(r.StartDate) + (r.StartDate !== r.EndDate ? (' ถึง ' + fmtDate(r.EndDate)) : '');
+      var durLabel = r.HalfDay ? (r.HalfDayLabel || 'ครึ่งวัน') : '';
+      var approverLines = '';
+      if (r.Status === 'APPROVED') {
+        if (r.SupervisorApprovedBy) approverLines += '<div class="hist-approver-line">✓ หัวหน้างาน: ' + r.SupervisorApprovedBy + '</div>';
+        if (r.ExecApprovedBy) approverLines += '<div class="hist-approver-line">✓ ผู้บริหาร: ' + r.ExecApprovedBy + '</div>';
+      } else if (r.Status === 'REJECTED_BY_SUPERVISOR' || r.Status === 'REJECTED_BY_EXECUTIVE') {
+        var byWhom = r.Status === 'REJECTED_BY_SUPERVISOR' ? r.SupervisorApprovedBy : r.ExecApprovedBy;
+        if (byWhom) approverLines += '<div class="hist-comment-line">✕ ปฏิเสธโดย ' + byWhom + '</div>';
+        if (r.Comment) approverLines += '<div class="hist-comment-line">หมายเหตุ: ' + r.Comment + '</div>';
+      }
+      return '<div class="req-card"><div class="req-card-row" style="margin-top:0;">' +
+        '<div class="req-card-type">' + (LEAVE_EMOJI[r.LeaveType] || '📄') + ' ' + (r.LeaveType || '-') + '</div>' +
+        '<span class="req-badge ' + balanceBadgeClass(r.Status) + '">' + (r.StatusLabel || r.Status) + '</span></div>' +
+        '<div class="req-card-meta"><div>📅 ' + dateLabel + (durLabel ? (' (' + durLabel + ')') : '') + '</div>' +
+        (r.Reason ? ('<div>เหตุผล: ' + r.Reason + '</div>') : '') +
+        '</div>' + approverLines +
+        '</div>';
+    }
+
+    function initHistoryPage() {
+      document.getElementById('skeletonHistory').style.display = 'none';
+      var app = document.getElementById('historyApp');
+      app.style.display = 'block';
+      app.classList.add('fade-in');
+      document.getElementById('historyWho').innerText = profile.displayName || '';
+
+      callApi('api_getMyLeaveHistory', [profile.userId]).then(function (res) {
+        var wrap = document.getElementById('historyCards');
+        var empty = document.getElementById('historyEmpty');
+        if (!res.success) {
+          wrap.innerHTML = '';
+          var msg = document.getElementById('historyMsg');
+          msg.style.display = 'block';
+          msg.className = 'msgbox err';
+          msg.innerText = res.message || 'เกิดข้อผิดพลาด';
+          return;
+        }
+        if (!res.rows || !res.rows.length) {
           wrap.innerHTML = '';
           empty.style.display = 'block';
         } else {
           empty.style.display = 'none';
-          wrap.innerHTML = res.recentRequests.map(buildBalanceHistoryHtml).join('');
+          wrap.innerHTML = res.rows.map(buildHistoryCardHtml).join('');
         }
       }).catch(function (err) {
-        var msg = document.getElementById('balanceMsg');
+        var msg = document.getElementById('historyMsg');
         msg.style.display = 'block';
         msg.className = 'msgbox err';
         msg.innerText = 'เกิดข้อผิดพลาด: ' + err;
