@@ -8,7 +8,7 @@
 <style>
   :root{
     --primary:#2F6FED; --primary-dark:#1F55C7; --primary-tint:#EAF1FE;
-    --ink:#1A1A1F; --ink2:#5B5B66; --ink3:#9A9AA5;
+    --ink:#1A1A1F; --ink2:#5B5B66; --ink3:#6E6E78; /* ปรับจาก #9A9AA5 ให้ contrast ผ่าน WCAG AA (เดิม 2.8:1 ตอนนี้ 5:1) เพราะสีนี้ใช้กับข้อความจริง (ตำแหน่ง/หมายเหตุ) ไม่ใช่แค่ตกแต่ง */
     --line:#ECECF0; --bg:#F5F6F8; --surface:#FFFFFF;
     --danger-tint:#FDECEC; --danger:#C23B3B;
     --amber-tint:#FFF3DC; --amber:#8A5200;
@@ -129,6 +129,23 @@
   .pin-box.error{ border-color:var(--danger); }
   @keyframes pinShake{ 10%,90%{transform:translateX(-1px);} 20%,80%{transform:translateX(2px);} 30%,50%,70%{transform:translateX(-5px);} 40%,60%{transform:translateX(5px);} }
   .pin-box-row.shake{ animation:pinShake .4s; }
+
+  /* เคารพการตั้งค่า "ลดการเคลื่อนไหว" ของระบบปฏิบัติการ (prefers-reduced-motion)
+     ปิดอนิเมชันที่เป็นแค่ของตกแต่ง (shimmer/fade/shake) แต่ยังคง .spinner ไว้ เพราะเป็นตัวบอกสถานะ "กำลังส่งข้อมูล" ที่จำเป็นต้องเห็น */
+  @media (prefers-reduced-motion: reduce) {
+    .skel, .fade-in, .pin-box-row.shake { animation: none !important; }
+  }
+
+  /* หน้าดูวันลาคงเหลือของตัวเอง (พนักงาน) */
+  .balance-hero{ background:var(--surface); border-radius:var(--r-card); padding:26px 20px; margin-top:12px; box-shadow:var(--shadow); text-align:center; }
+  .balance-hero-label{ font-size:var(--fs-label); color:var(--ink3); font-weight:600; }
+  .balance-hero-num{ font-size:46px; font-weight:800; color:var(--primary-dark); margin-top:8px; line-height:1; }
+  .balance-hero-sub{ font-size:var(--fs-hint); color:var(--ink3); margin-top:10px; }
+  .balance-section-title{ font-size:var(--fs-h2); font-weight:700; color:var(--ink); margin:22px 0 4px; }
+  .bh-card{ background:var(--surface); border-radius:var(--r-card); padding:14px 16px; margin-top:10px; box-shadow:var(--shadow); }
+  .bh-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .bh-type{ font-size:var(--fs-body); font-weight:600; color:var(--ink); }
+  .bh-meta{ font-size:13px; color:var(--ink3); margin-top:3px; }
 </style>
 </head>
 <body>
@@ -168,8 +185,29 @@
       <div class="skel" style="width:54px;height:60px;border-radius:var(--r-input);"></div>
     </div>
   </div>
+  <div id="skeletonBalance" class="card" style="display:none;">
+    <div class="skel skel-line" style="width:50%;height:16px;margin:0 auto;"></div>
+    <div class="skel skel-line" style="width:35%;height:40px;margin:14px auto;"></div>
+    <div class="skel skel-block" style="height:70px;margin-top:20px;"></div>
+    <div class="skel skel-block" style="height:70px;margin-top:10px;"></div>
+  </div>
 
   <div id="debugPanel"></div>
+
+  <!-- หน้าดูวันลาคงเหลือของตัวเอง (พนักงาน) -->
+  <div id="balanceApp" style="display:none;">
+    <h2 class="page-title">วันลาคงเหลือของฉัน</h2>
+    <div id="balanceWho" class="subtle"></div>
+    <div class="balance-hero">
+      <div class="balance-hero-label">วันลาพักร้อนคงเหลือ</div>
+      <div class="balance-hero-num" id="balanceNum">-</div>
+      <div class="balance-hero-sub" id="balanceSub"></div>
+    </div>
+    <div class="balance-section-title">ประวัติการลาล่าสุด</div>
+    <div id="balanceHistory"></div>
+    <div id="balanceEmpty" class="subtle" style="display:none;text-align:center;padding:30px 0;">ยังไม่มีประวัติการลา</div>
+    <div id="balanceMsg" class="msgbox"></div>
+  </div>
 
   <!-- หน้ากรอก PIN 4 หลัก (พินเกท) ก่อนเข้าหน้ารายการ/หน้าอนุมัติ -->
   <div id="pinGateApp" style="display:none;">
@@ -403,10 +441,11 @@
     var requestId = params.get('id');
     var role = params.get('role') || 'supervisor';
     var isListMode = params.get('list') === '1';
+    var isBalanceMode = params.get('balance') === '1';
     var T = role === 'executive' ? T_EN : T_TH;
 
     // เวอร์ชันโค้ด: เอาไว้เช็คว่าไฟล์ที่ GitHub เป็นเวอร์ชันล่าสุดจริงมั้ย (เทียบกับที่ผมส่งให้)
-    var CODE_VERSION = 'v12-pingate-2026-07-23';
+    var CODE_VERSION = 'v13-balance-2026-07-27';
     __log('code version: ' + CODE_VERSION);
 
     // ======================= แคช PIN ที่ยืนยันผ่านแล้ว (กันถามซ้ำ) =======================
@@ -431,14 +470,15 @@
     }
 
     // โหมดรายการ (list) และโหมดอนุมัติรายคำขอ (approve) ทั้งคู่ต้องผ่านการกรอก PIN 4 หลักก่อน (พินเกท)
+    // โหมดดูวันลาคงเหลือของตัวเอง (balance) ไม่ต้องผ่าน PIN เกท เพราะเป็นข้อมูลของพนักงานคนนั้นเอง ไม่ใช่การอนุมัติ
     // ถ้ามี PIN ที่ยืนยันผ่านไปแล้วเมื่อไม่นานมานี้ (ยังไม่หมดอายุ) ให้ข้ามหน้าพินไปเลย ไม่ต้องกรอกซ้ำ
     var cachedRolePin = (isListMode || requestId) ? getCachedPin(role) : null;
     var needPinGate = (isListMode || requestId) && !cachedRolePin;
     var otpReal = ''; // เก็บ PIN จริงของหัวหน้างาน/ผู้บริหาร ไว้ใช้ตอนกดอนุมัติ/ไม่อนุมัติ (มาจากพินเกท หรือจากช่องกรอกในหน้าอนุมัติ)
     var pinPreVerified = false; // true = ผ่านพินเกทมาแล้ว (หรือมีแคชอยู่แล้ว) ไม่ต้องโชว์ช่องกรอก PIN ซ้ำในหน้าอนุมัติ
 
-    var pageMode = needPinGate ? 'pingate' : (isListMode ? 'list' : (requestId ? 'approve' : 'form'));
-    var skeletonId = needPinGate ? 'skeletonGate' : (isListMode ? 'skeletonList' : (requestId ? 'skeletonApprove' : 'skeletonForm'));
+    var pageMode = needPinGate ? 'pingate' : (isBalanceMode ? 'balance' : (isListMode ? 'list' : (requestId ? 'approve' : 'form')));
+    var skeletonId = needPinGate ? 'skeletonGate' : (isBalanceMode ? 'skeletonBalance' : (isListMode ? 'skeletonList' : (requestId ? 'skeletonApprove' : 'skeletonForm')));
     __log('page started, LIFF_ID=' + LIFF_ID + ', mode=' + pageMode + (pageMode !== 'form' ? '(' + role + ')' : '') + (cachedRolePin ? ' [cached PIN found]' : ''));
 
     // แสดง skeleton ที่ตรงกับโหมดของหน้านี้ทันที (ไม่ต้องรอ LIFF โหลดเสร็จก่อน)
@@ -467,7 +507,9 @@
           initPinGatePage();
         } else {
           if (cachedRolePin) applyVerifiedPin(cachedRolePin);
-          if (isListMode) {
+          if (isBalanceMode) {
+            initBalancePage();
+          } else if (isListMode) {
             initListPage();
           } else if (requestId) {
             initApprovePage();
@@ -790,6 +832,58 @@
         btn.disabled = false;
         btn.innerText = 'ยืนยันส่งคำขอ';
         showFormMsg('เกิดข้อผิดพลาด: ' + err, false);
+      });
+    }
+
+    // ======================= หน้าดูวันลาคงเหลือของตัวเอง (พนักงาน) =======================
+    function balanceBadgeClass(status) {
+      if (status === 'APPROVED') return 'approved';
+      if (status === 'PENDING_SUPERVISOR' || status === 'PENDING_EXECUTIVE') return 'pending';
+      return 'rejected';
+    }
+    function buildBalanceHistoryHtml(r) {
+      var dateLabel = r.HalfDay ? fmtDate(r.StartDate) : fmtDate(r.StartDate) + (r.StartDate !== r.EndDate ? (' ถึง ' + fmtDate(r.EndDate)) : '');
+      var durLabel = r.HalfDay ? (r.HalfDayLabel || 'ครึ่งวัน') : '';
+      return '<div class="bh-card"><div class="bh-row">' +
+        '<div><div class="bh-type">' + (r.LeaveType || '-') + '</div>' +
+        '<div class="bh-meta">📅 ' + dateLabel + (durLabel ? (' (' + durLabel + ')') : '') + '</div></div>' +
+        '<span class="req-badge ' + balanceBadgeClass(r.Status) + '">' + (r.StatusLabel || r.Status) + '</span>' +
+        '</div></div>';
+    }
+    function initBalancePage() {
+      document.getElementById('skeletonBalance').style.display = 'none';
+      var app = document.getElementById('balanceApp');
+      app.style.display = 'block';
+      app.classList.add('fade-in');
+      document.getElementById('balanceWho').innerText = profile.displayName || '';
+
+      callApi('api_getMyLeaveBalance', [profile.userId]).then(function (res) {
+        if (!res.success) {
+          document.getElementById('balanceNum').innerText = '-';
+          var msg = document.getElementById('balanceMsg');
+          msg.style.display = 'block';
+          msg.className = 'msgbox err';
+          msg.innerText = res.message || 'เกิดข้อผิดพลาด';
+          return;
+        }
+        document.getElementById('balanceNum').innerText = res.vacationRemaining;
+        document.getElementById('balanceSub').innerText =
+          'ใช้ไปแล้ว ' + res.vacationUsed + ' วัน จากโควตา ' + res.vacationQuota + ' วัน/ปี';
+
+        var wrap = document.getElementById('balanceHistory');
+        var empty = document.getElementById('balanceEmpty');
+        if (!res.recentRequests || !res.recentRequests.length) {
+          wrap.innerHTML = '';
+          empty.style.display = 'block';
+        } else {
+          empty.style.display = 'none';
+          wrap.innerHTML = res.recentRequests.map(buildBalanceHistoryHtml).join('');
+        }
+      }).catch(function (err) {
+        var msg = document.getElementById('balanceMsg');
+        msg.style.display = 'block';
+        msg.className = 'msgbox err';
+        msg.innerText = 'เกิดข้อผิดพลาด: ' + err;
       });
     }
 
