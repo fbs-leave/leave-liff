@@ -901,14 +901,28 @@
       app.classList.add('fade-in');
       document.getElementById('balanceWho').innerText = profile.displayName || '';
 
+      // สเกเลตอนของการ์ดขณะรอข้อมูลจาก API (ก่อนหน้านี้ช่วงนี้ว่างเปล่าไม่มีอะไรโชว์ระหว่างรอ)
+      document.getElementById('balanceCards').innerHTML =
+        '<div class="skel skel-block" style="height:72px;border-radius:var(--r-card);"></div>' +
+        '<div class="skel skel-block" style="height:72px;margin-top:10px;border-radius:var(--r-card);"></div>' +
+        '<div class="skel skel-block" style="height:72px;margin-top:10px;border-radius:var(--r-card);"></div>';
+
       callApi('api_getMyLeaveBalance', [profile.userId]).then(function (res) {
         var wrap = document.getElementById('balanceCards');
+        var msg = document.getElementById('balanceMsg');
         if (!res.success) {
           wrap.innerHTML = '';
-          var msg = document.getElementById('balanceMsg');
           msg.style.display = 'block';
           msg.className = 'msgbox err';
           msg.innerText = res.message || 'เกิดข้อผิดพลาด';
+          return;
+        }
+        // ถ้า Code.gs ฝั่ง Apps Script ยังเป็นเวอร์ชันเก่า (ยังไม่ deploy อันใหม่) res.balances จะไม่มี ป้องกันไม่ให้ .map พังแบบ TypeError เฉยๆ
+        if (!res.balances) {
+          wrap.innerHTML = '';
+          msg.style.display = 'block';
+          msg.className = 'msgbox err';
+          msg.innerText = 'ระบบหลังบ้าน (Code.gs) ยังเป็นเวอร์ชันเก่า กรุณาแจ้งผู้ดูแลระบบให้ deploy เวอร์ชันล่าสุด';
           return;
         }
         wrap.innerHTML = res.balances.map(buildBalanceCardHtml).join('');
