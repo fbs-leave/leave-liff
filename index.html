@@ -963,6 +963,12 @@
       app.classList.add('fade-in');
       document.getElementById('historyWho').innerText = profile.displayName || '';
 
+      // สเกเลตอนของการ์ดขณะรอข้อมูลจาก API
+      document.getElementById('historyCards').innerHTML =
+        '<div class="skel skel-block" style="height:100px;border-radius:var(--r-card);"></div>' +
+        '<div class="skel skel-block" style="height:100px;margin-top:12px;border-radius:var(--r-card);"></div>' +
+        '<div class="skel skel-block" style="height:100px;margin-top:12px;border-radius:var(--r-card);"></div>';
+
       callApi('api_getMyLeaveHistory', [profile.userId]).then(function (res) {
         var wrap = document.getElementById('historyCards');
         var empty = document.getElementById('historyEmpty');
