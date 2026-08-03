@@ -44,7 +44,8 @@
   .ok { background:var(--ok-tint); color:var(--ok); }
   .err { background:var(--danger-tint); color:var(--danger); }
 
-  #debugPanel { white-space: pre-wrap; word-break: break-all; font-family: monospace; font-size: 11px; background:#111; color:#0f0; padding:10px; border-radius:10px; margin-top:14px; max-height:30vh; overflow:auto; }
+  /* ซ่อนไว้เป็นค่าเริ่มต้น จะโผล่เฉพาะเมื่อเปิดหน้าด้วย ?debug=1 เท่านั้น (โค้ดจะสั่ง display:block ให้เอง) */
+  #debugPanel { display: none; white-space: pre-wrap; word-break: break-all; font-family: monospace; font-size: 11px; background:#111; color:#0f0; padding:10px; border-radius:10px; margin-top:14px; max-height:30vh; overflow:auto; }
 
   /* skeleton */
   .skel{ background:linear-gradient(90deg,#E9E9EE 25%,#F4F4F7 37%,#E9E9EE 63%); background-size:400% 100%; animation:skel-shimmer 1.4s ease-in-out infinite; border-radius:var(--r-input); }
@@ -363,16 +364,27 @@
     // LIFF ID ของ LIFF app ที่ Endpoint URL ชี้มาที่หน้านี้ (ตั้งค่าใน LINE Developers > LIFF) - ต้องแก้เป็นของจริงก่อนใช้งาน
     var LIFF_ID = "2010670203-cILnaiQM";
 
-    // ======================= Debug log (โชว์บนจอ) =======================
+    // ======================= Debug log =======================
+    // ปกติ (พนักงานใช้งานจริง) กล่อง log สีดำ-เขียวจะถูกซ่อนไว้ ไม่รบกวนสายตา
+    // แต่ยังเก็บ log ไว้ในหน่วยความจำตลอด ถ้าต้องการดูตอนมีปัญหา ให้เติม ?debug=1 ต่อท้าย URL แล้วเปิดใหม่ กล่องจะโผล่มาพร้อม log ครบตั้งแต่ต้น
+    var DEBUG_MODE = new URLSearchParams(location.search).get('debug') === '1';
     window.__dbg = [];
     function __log(msg) {
       window.__dbg.push('[' + new Date().toTimeString().slice(0, 8) + '] ' + msg);
+      if (!DEBUG_MODE) return;
       var el = document.getElementById('debugPanel');
-      if (el) el.textContent = window.__dbg.join('\n');
+      if (el) { el.style.display = 'block'; el.textContent = window.__dbg.join('\n'); }
     }
-    window.onerror = function (msg, url, line) { __log('window.onerror: ' + msg + ' @ ' + line); };
+    // เดิม error จะโผล่แค่ในกล่อง debug พอซ่อนกล่องไปแล้ว ถ้าเกิดข้อผิดพลาดพนักงานจะเห็นแค่วงกลมหมุนค้างโดยไม่รู้ว่าเกิดอะไรขึ้น
+    // จึงต้องปิดสปินเนอร์แล้วบอกเป็นภาษาคนแทน (ยังเก็บรายละเอียดทางเทคนิคไว้ใน __dbg ให้เปิดดูด้วย ?debug=1 ได้เหมือนเดิม)
+    function __reportFatal(detail) {
+      __log(detail);
+      try { hideSpinner(); } catch (ignore) {}
+      window.alert('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง\nถ้ายังไม่ได้ กรุณาแจ้งฝ่ายบุคคล');
+    }
+    window.onerror = function (msg, url, line) { __reportFatal('window.onerror: ' + msg + ' @ ' + line); };
     window.addEventListener('unhandledrejection', function (e) {
-      __log('unhandledrejection: ' + (e.reason && e.reason.message ? e.reason.message : e.reason));
+      __reportFatal('unhandledrejection: ' + (e.reason && e.reason.message ? e.reason.message : e.reason));
     });
 
     // ======================= สปินเนอร์เต็มจอระหว่างส่งข้อมูล =======================
@@ -472,7 +484,7 @@
     var T = role === 'executive' ? T_EN : T_TH;
 
     // เวอร์ชันโค้ด: เอาไว้เช็คว่าไฟล์ที่ GitHub เป็นเวอร์ชันล่าสุดจริงมั้ย (เทียบกับที่ผมส่งให้)
-    var CODE_VERSION = 'v14-balance-cards-2026-07-27';
+    var CODE_VERSION = 'v15-hide-debug-2026-08-03';
     __log('code version: ' + CODE_VERSION);
 
     // ======================= แคช PIN ที่ยืนยันผ่านแล้ว (กันถามซ้ำ) =======================
