@@ -120,6 +120,19 @@
   .req-card-btns a{ flex:1; text-align:center; padding:11px; border-radius:var(--r-btn); font-size:14.5px; font-weight:700; text-decoration:none; }
   .req-card-btn-reject{ background:var(--danger-tint); color:var(--danger); }
   .req-card-btn-approve{ background:var(--primary); color:#fff; }
+  /* รูปหลักฐานในการ์ดรายการ (เหนือปุ่มอนุมัติ) แตะเพื่อขยาย */
+  .req-card-photo{ margin-top:12px; position:relative; cursor:pointer; border-radius:var(--r-input); overflow:hidden; }
+  .req-card-photo img{ width:100%; max-height:230px; object-fit:cover; display:block; background:var(--line); }
+  .req-card-photo-hint{ position:absolute; right:8px; bottom:8px; background:rgba(0,0,0,.62); color:#fff;
+    font-size:12px; font-weight:600; padding:4px 10px; border-radius:14px; }
+  /* ดูรูปแบบขยายเต็มจอ */
+  #photoZoom{ display:none; position:fixed; inset:0; background:rgba(0,0,0,.9); z-index:9000;
+    align-items:center; justify-content:center; flex-direction:column; gap:12px; padding:18px; }
+  #photoZoom.show{ display:flex; }
+  #photoZoom img{ max-width:100%; max-height:78vh; border-radius:var(--r-input); background:#fff; }
+  #photoZoom .zoom-cap{ color:#fff; font-size:13.5px; text-align:center; }
+  #photoZoom .zoom-cap a{ color:#fff; }
+  #photoZoom .zoom-close{ color:#fff; font-size:14px; font-weight:700; opacity:.85; }
 
   /* หน้ากรอก PIN 4 หลัก (พินเกท) ก่อนเข้าหน้ารายการ/หน้าอนุมัติ */
   .pin-gate-subtitle{ font-size:var(--fs-body); color:var(--ink2); margin-top:4px; }
@@ -210,6 +223,13 @@
   </div>
 
   <div id="debugPanel"></div>
+
+  <!-- ดูรูปหลักฐานแบบขยายเต็มจอ (ใช้ร่วมกันทั้งหน้ารายการและหน้าอนุมัติ) แตะที่ใดก็ได้เพื่อปิด -->
+  <div id="photoZoom" onclick="closePhotoZoom()">
+    <img id="zoomImg" alt="" onclick="event.stopPropagation()">
+    <div class="zoom-cap" id="zoomCap"></div>
+    <div class="zoom-close">แตะเพื่อปิด / Tap to close</div>
+  </div>
 
   <!-- หน้าดูวันลาคงเหลือของตัวเอง (พนักงาน) -->
   <div id="balanceApp" style="display:none;">
@@ -387,6 +407,22 @@
       __reportFatal('unhandledrejection: ' + (e.reason && e.reason.message ? e.reason.message : e.reason));
     });
 
+    // ======================= รูปหลักฐาน: แปลงลิงก์ Drive + ดูแบบขยายเต็มจอ =======================
+    // ลิงก์ที่เก็บในชีตเป็นหน้า "ดูไฟล์" ของ Drive (…/file/d/<ID>/view) ฝังเป็นรูปตรงๆ ไม่ได้
+    // ต้องดึงรหัสไฟล์มาประกอบเป็น URL รูปย่อของ Drive จึงจะแสดงเป็นรูปได้
+    function driveThumb(url, size) {
+      var m = String(url || '').match(/\/d\/([a-zA-Z0-9_-]{10,})/) || String(url || '').match(/[?&]id=([a-zA-Z0-9_-]{10,})/);
+      return m ? ('https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w' + (size || 800)) : '';
+    }
+    function openPhotoZoom(thumbUrl, caption, originalUrl) {
+      var big = thumbUrl.replace(/&sz=w\d+/, '&sz=w1600');
+      document.getElementById('zoomImg').src = big;
+      document.getElementById('zoomCap').innerHTML = (caption || '') +
+        (originalUrl ? ' · <a href="' + originalUrl + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">Google Drive</a>' : '');
+      document.getElementById('photoZoom').classList.add('show');
+    }
+    function closePhotoZoom() { document.getElementById('photoZoom').classList.remove('show'); }
+
     // ======================= สปินเนอร์เต็มจอระหว่างส่งข้อมูล =======================
     function showSpinner(text) {
       document.getElementById('spinnerText').innerText = text || 'กำลังส่ง...';
@@ -484,7 +520,7 @@
     var T = role === 'executive' ? T_EN : T_TH;
 
     // เวอร์ชันโค้ด: เอาไว้เช็คว่าไฟล์ที่ GitHub เป็นเวอร์ชันล่าสุดจริงมั้ย (เทียบกับที่ผมส่งให้)
-    var CODE_VERSION = 'v15-hide-debug-2026-08-03';
+    var CODE_VERSION = 'v16-attach-photo-2026-08-03';
     __log('code version: ' + CODE_VERSION);
 
     // ======================= แคช PIN ที่ยืนยันผ่านแล้ว (กันถามซ้ำ) =======================
@@ -1098,8 +1134,21 @@
         '<div class="req-card-row"><div class="req-card-type">🕚 ' + (r.LeaveTypeDisplay || r.LeaveType) + '</div>' +
         '<span class="req-badge ' + badgeClassFor(r.Status) + '">' + (r.StatusLabel || r.Status) + '</span></div>' +
         '<div class="req-card-meta">' + metaLines + '</div>' +
+        buildCardPhotoHtml(r) +
         actionBtns +
         '</div>';
+    }
+
+    // รูปหลักฐานที่พนักงานแนบมา แสดงในการ์ดรายการเลย เหนือปุ่มอนุมัติ หัวหน้างานจะได้ตัดสินใจได้โดยไม่ต้องกดเข้าไปดูทีละใบ
+    // แตะที่รูปเพื่อขยายเต็มจอ (ไม่เด้งออกไปหน้า Google Drive ซึ่งจะทำให้หลุดออกจาก LIFF แล้วต้องกดกลับเข้ามาใหม่)
+    function buildCardPhotoHtml(r) {
+      if (!r.AttachmentUrl) return '';
+      var thumb = driveThumb(r.AttachmentUrl, 800);
+      if (!thumb) return '';
+      var cap = ((r.EmployeeSubDisplay || r.EmployeeDisplay || '') + ' · ' + (r.LeaveTypeDisplay || r.LeaveType || '')).replace(/'/g, '');
+      return '<div class="req-card-photo" onclick="openPhotoZoom(\'' + thumb + '\',\'' + cap + '\',\'' + r.AttachmentUrl + '\')">' +
+        '<img src="' + thumb + '" alt="' + T.viewAttachment + '" loading="lazy" onerror="this.parentNode.style.display=\'none\'">' +
+        '<div class="req-card-photo-hint">🔍 ' + T.viewAttachment + '</div></div>';
     }
 
     function renderListCards() {
@@ -1194,18 +1243,33 @@
 
         // แสดงรูปหลักฐาน (เช่น ใบรับรองแพทย์) ให้เห็นเลยตรงหน้าอนุมัติ ไม่ต้องกดลิงก์แยกไปเปิดอีกที
         if (d.AttachmentUrl) {
-          var photoLink = document.createElement('a');
-          photoLink.href = d.AttachmentUrl;
-          photoLink.target = '_blank';
-          photoLink.rel = 'noopener';
-          photoLink.style.cssText = 'display:block;margin-top:14px;';
+          // เดิมกดรูปแล้วเด้งออกไปหน้า Google Drive ทำให้หลุดจาก LIFF ต้องกดย้อนกลับเข้ามาใหม่
+          // เปลี่ยนเป็นแตะแล้วขยายเต็มจอในหน้าเดิม (ในกล่องขยายยังมีลิงก์ไป Drive ให้อยู่ถ้าอยากเปิดต้นฉบับ)
+          var photoLink = document.createElement('div');
+          photoLink.style.cssText = 'display:block;margin-top:14px;cursor:pointer;';
+          photoLink.onclick = function () {
+            var big = driveThumb(d.AttachmentUrl, 1600);
+            if (big) openPhotoZoom(big, (d.EmployeeDisplay || '') + ' · ' + (d.LeaveTypeDisplay || d.LeaveType || ''), d.AttachmentUrl);
+            else window.open(d.AttachmentUrl, '_blank', 'noopener');
+          };
           var photoImg = document.createElement('img');
-          photoImg.src = d.AttachmentImageUrl || d.AttachmentUrl;
+          // ไล่ลองทีละแบบ: ลิงก์ที่ backend ส่งมา -> ลิงก์รูปย่อที่คำนวณเองจากรหัสไฟล์ -> ยอมแพ้เหลือแค่ลิงก์
+          // ที่ต้องคำนวณเองเผื่อไว้ เพราะถ้ายังไม่ได้ deploy Code.gs ตัวใหม่ backend จะส่งลิงก์แบบเก่า (/uc?export=view)
+          // ซึ่ง Google ไม่ให้ฝังรูปข้ามเว็บแล้ว รูปจะไม่ขึ้น ทางนี้ทำให้รูปโชว์ได้ทันทีโดยไม่ต้องรอ deploy
+          var fileIdMatch = String(d.AttachmentUrl).match(/\/d\/([a-zA-Z0-9_-]+)/) ||
+                            String(d.AttachmentUrl).match(/[?&]id=([a-zA-Z0-9_-]+)/);
+          var thumbUrl = fileIdMatch ? ('https://drive.google.com/thumbnail?id=' + fileIdMatch[1] + '&sz=w1000') : '';
+          var srcQueue = [];
+          if (d.AttachmentImageUrl) srcQueue.push(d.AttachmentImageUrl);
+          if (thumbUrl && srcQueue.indexOf(thumbUrl) === -1) srcQueue.push(thumbUrl);
+          srcQueue.push(d.AttachmentUrl);
+          photoImg.src = srcQueue.shift();
           photoImg.alt = T.viewAttachment;
           photoImg.style.cssText = 'width:100%;border-radius:var(--r-input);display:block;box-shadow:var(--shadow);';
           photoImg.onerror = function () {
-            // เผื่อรูปฝังไม่ขึ้น (เช่นไฟล์ใหญ่ไป/ลิงก์ยังไม่พร้อม) ให้เหลือแค่ลิงก์ให้กดเปิดแทน
+            // ยังมีตัวเลือกถัดไปให้ลอง ก็ลองต่อ ถ้าหมดแล้วค่อยซ่อนรูป
             // (แก้บั๊ก: เดิมซ่อนแค่รูปแล้วลิงก์ก็ยุบเหลือ 0 พื้นที่ กดไม่ได้จริง ตอนนี้ยังกดลิงก์ได้เสมอไม่ว่ารูปจะขึ้นหรือไม่)
+            if (srcQueue.length) { this.src = srcQueue.shift(); return; }
             this.style.display = 'none';
           };
           photoLink.appendChild(photoImg);
