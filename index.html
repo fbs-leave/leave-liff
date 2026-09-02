@@ -380,7 +380,8 @@
   <script>
     // ======================= ตั้งค่า =======================
     // URL ของ Google Apps Script /exec ที่ deploy ไว้ (backend/ฐานข้อมูล) - ห้ามลบ /exec ท้าย
-    var EXEC_URL = "https://script.google.com/macros/s/AKfycbwThIxxwTCdFaeSfgyOOdKKRr14dDz6pWhuTqvUqkkOqyF76Uvxb70iTbWII-wiRfzImA/exec";
+    // ย้ายหลังบ้านมาที่บัญชี fbs.leave@gmail.com เมื่อ 2026-09-02 (URL เดิมของบัญชีส่วนตัวเลิกใช้แล้ว)
+    var EXEC_URL = "https://script.google.com/macros/s/AKfycbyWgwjAL5z5RHIYzV0SIwR1qZmq4oXjwr2cCDmQEeYFGAtE1b4eWasRmEaxixUqxavk2g/exec";
     // LIFF ID ของ LIFF app ที่ Endpoint URL ชี้มาที่หน้านี้ (ตั้งค่าใน LINE Developers > LIFF) - ต้องแก้เป็นของจริงก่อนใช้งาน
     var LIFF_ID = "2010670203-cILnaiQM";
 
@@ -520,7 +521,7 @@
     var T = role === 'executive' ? T_EN : T_TH;
 
     // เวอร์ชันโค้ด: เอาไว้เช็คว่าไฟล์ที่ GitHub เป็นเวอร์ชันล่าสุดจริงมั้ย (เทียบกับที่ผมส่งให้)
-    var CODE_VERSION = 'v16-attach-photo-2026-08-03';
+    var CODE_VERSION = 'v17-new-backend-2026-09-02';
     __log('code version: ' + CODE_VERSION);
 
     // ======================= แคช PIN ที่ยืนยันผ่านแล้ว (กันถามซ้ำ) =======================
