@@ -40,7 +40,8 @@
   .choice-row .choice-btn{ flex:1; }
 
   .card { background:var(--surface); border-radius:var(--r-card); padding:20px; margin-top:12px; box-shadow:var(--shadow); }
-  .msgbox { margin-top:14px; padding:12px 14px; border-radius:var(--r-input); display:none; font-size:var(--fs-body); }
+  /* white-space:pre-line เพื่อให้ข้อความหลายบรรทัด (เช่น คำแนะนำตอนรูปใหญ่เกิน) ขึ้นบรรทัดใหม่ตามที่เขียนไว้ */
+  .msgbox { margin-top:14px; padding:12px 14px; border-radius:var(--r-input); display:none; font-size:var(--fs-body); white-space:pre-line; line-height:1.55; }
   .ok { background:var(--ok-tint); color:var(--ok); }
   .err { background:var(--danger-tint); color:var(--danger); }
 
@@ -521,7 +522,7 @@
     var T = role === 'executive' ? T_EN : T_TH;
 
     // เวอร์ชันโค้ด: เอาไว้เช็คว่าไฟล์ที่ GitHub เป็นเวอร์ชันล่าสุดจริงมั้ย (เทียบกับที่ผมส่งให้)
-    var CODE_VERSION = 'v17-new-backend-2026-09-02';
+    var CODE_VERSION = 'v19-photo-msg-2026-09-02';
     __log('code version: ' + CODE_VERSION);
 
     // ======================= แคช PIN ที่ยืนยันผ่านแล้ว (กันถามซ้ำ) =======================
@@ -762,23 +763,50 @@
     }
 
     // ======================= แนบรูปภาพลาป่วย (ย่อขนาด + บีบอัดก่อนส่ง กันไฟล์ใหญ่เกินไป) =======================
+    // ขนาดด้านยาวสุดหลังย่อ 1600px — ใหญ่พออ่านตัวหนังสือในใบรับรองแพทย์ออก (เดิม 1000px ตัวเล็กๆ อ่านไม่ออก)
+    // เพดานขนาดไฟล์หลังบีบอัด 500KB — ถ้ายังเกินจะไล่ลดคุณภาพลงทีละขั้นจนพอดี กันคำขอค้างเพราะไฟล์ใหญ่เกิน
+    // รูปที่ต้นทางใหญ่กว่า 25MB ปฏิเสธไปเลยตั้งแต่ต้น เพราะมือถือรุ่นเก่าอาจค้างตอนย่อรูปขนาดนั้น
+    var PHOTO_MAX_DIM = 1600;
+    var PHOTO_TARGET_BYTES = 500 * 1024;
+    var PHOTO_MAX_INPUT_BYTES = 25 * 1024 * 1024;
     var photoDataUrl = '';
+    // ความยาว data URL แปลงกลับเป็นจำนวนไบต์จริงโดยประมาณ (base64 ทำให้ยาวขึ้นราว 4/3 เท่า)
+    function dataUrlBytes(dataUrl) {
+      var i = dataUrl.indexOf(',');
+      return Math.round((dataUrl.length - i - 1) * 3 / 4);
+    }
     function readAndCompressImage(file) {
       return new Promise(function (resolve, reject) {
+        if (file.size > PHOTO_MAX_INPUT_BYTES) {
+          // บอกให้ชัดว่าต้องทำอะไรต่อ ไม่ใช่แค่บอกว่าผิดพลาด พนักงานส่วนใหญ่ไม่รู้ว่าปรับความละเอียดกล้องได้ที่ไหน
+          reject(new Error(
+            'รูปใหญ่เกิน 25MB (ไฟล์นี้ ' + Math.round(file.size / 1024 / 1024) + 'MB) ให้ลดความละเอียดภาพ\n' +
+            'วิธีลด: เปิดแอปกล้อง → ตั้งค่า → ลดความละเอียด/ขนาดภาพ แล้วถ่ายใหม่\n' +
+            'หรือเลือกรูปอื่นที่ขนาดเล็กกว่านี้'
+          ));
+          return;
+        }
         var reader = new FileReader();
         reader.onload = function (e) {
           var img = new Image();
           img.onload = function () {
-            var maxDim = 1000;
             var w = img.width, h = img.height;
-            if (w > maxDim || h > maxDim) {
-              if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
-              else { w = Math.round(w * maxDim / h); h = maxDim; }
+            if (w > PHOTO_MAX_DIM || h > PHOTO_MAX_DIM) {
+              if (w > h) { h = Math.round(h * PHOTO_MAX_DIM / w); w = PHOTO_MAX_DIM; }
+              else { w = Math.round(w * PHOTO_MAX_DIM / h); h = PHOTO_MAX_DIM; }
             }
             var canvas = document.createElement('canvas');
             canvas.width = w; canvas.height = h;
             canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-            resolve(canvas.toDataURL('image/jpeg', 0.7));
+            // ไล่ลดคุณภาพลงทีละขั้นจนไฟล์ไม่เกินเพดาน (หยุดที่ 0.5 ต่ำกว่านี้ภาพจะแตกจนใช้เป็นหลักฐานไม่ได้)
+            var quality = 0.75;
+            var out = canvas.toDataURL('image/jpeg', quality);
+            while (dataUrlBytes(out) > PHOTO_TARGET_BYTES && quality > 0.5) {
+              quality -= 0.1;
+              out = canvas.toDataURL('image/jpeg', quality);
+            }
+            __log('photo compressed to ' + Math.round(dataUrlBytes(out) / 1024) + 'KB at quality ' + quality.toFixed(2));
+            resolve(out);
           };
           img.onerror = reject;
           img.src = e.target.result;
@@ -798,7 +826,8 @@
         __log('photo ready, ~' + Math.round(dataUrl.length / 1024) + 'KB');
       }).catch(function (err) {
         __log('photo compress error: ' + err);
-        showFormMsg('แนบรูปไม่สำเร็จ กรุณาลองใหม่', false);
+        // ถ้าเป็นกรณีไฟล์ใหญ่เกินเพดาน ให้บอกเหตุผลตรงๆ พนักงานจะได้รู้ว่าต้องทำอะไรต่อ ไม่ใช่แค่ "ลองใหม่"
+        showFormMsg((err && err.message) ? err.message : 'แนบรูปไม่สำเร็จ กรุณาลองใหม่', false);
       });
     }
 
