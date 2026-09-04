@@ -410,15 +410,11 @@
     });
 
     // ======================= รูปหลักฐาน: แปลงลิงก์ Drive + ดูแบบขยายเต็มจอ =======================
-    // ลิงก์ที่เก็บในชีตเป็นหน้า "ดูไฟล์" ของ Drive (…/file/d/<ID>/view) ฝังเป็นรูปตรงๆ ไม่ได้
-    // ต้องดึงรหัสไฟล์มาประกอบเป็น URL รูปย่อของ Drive จึงจะแสดงเป็นรูปได้
-    function driveThumb(url, size) {
-      var m = String(url || '').match(/\/d\/([a-zA-Z0-9_-]{10,})/) || String(url || '').match(/[?&]id=([a-zA-Z0-9_-]{10,})/);
-      return m ? ('https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w' + (size || 800)) : '';
-    }
-    function openPhotoZoom(thumbUrl, caption, originalUrl) {
-      var big = thumbUrl.replace(/&sz=w\d+/, '&sz=w1600');
-      document.getElementById('zoomImg').src = big;
+    // รูปทั้งหมดดึงผ่านเซิร์ฟเวอร์ (api_getAttachmentForApprover) แล้วส่งกลับมาเป็น data URL
+    // จึงไม่ต้องประกอบลิงก์ของ Drive เองอีกต่อไป — เบราว์เซอร์ใน LINE ไม่ได้ล็อกอินบัญชี Google
+    // ถ้าฝังลิงก์ Drive ตรงๆ Drive จะไม่ยอมส่งรูปให้ ไม่ว่าไฟล์จะถูกแชร์ไว้แบบไหนก็ตาม
+    function openPhotoZoom(imgSrc, caption, originalUrl) {
+      document.getElementById('zoomImg').src = imgSrc;
       document.getElementById('zoomCap').innerHTML = (caption || '') +
         (originalUrl ? ' · <a href="' + originalUrl + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">Google Drive</a>' : '');
       document.getElementById('photoZoom').classList.add('show');
@@ -522,7 +518,7 @@
     var T = role === 'executive' ? T_EN : T_TH;
 
     // เวอร์ชันโค้ด: เอาไว้เช็คว่าไฟล์ที่ GitHub เป็นเวอร์ชันล่าสุดจริงมั้ย (เทียบกับที่ผมส่งให้)
-    var CODE_VERSION = 'v19-photo-msg-2026-09-02';
+    var CODE_VERSION = 'v20-server-photo-2026-09-04';
     __log('code version: ' + CODE_VERSION);
 
     // ======================= แคช PIN ที่ยืนยันผ่านแล้ว (กันถามซ้ำ) =======================
@@ -1173,12 +1169,31 @@
     // แตะที่รูปเพื่อขยายเต็มจอ (ไม่เด้งออกไปหน้า Google Drive ซึ่งจะทำให้หลุดออกจาก LIFF แล้วต้องกดกลับเข้ามาใหม่)
     function buildCardPhotoHtml(r) {
       if (!r.AttachmentUrl) return '';
-      var thumb = driveThumb(r.AttachmentUrl, 800);
-      if (!thumb) return '';
       var cap = ((r.EmployeeSubDisplay || r.EmployeeDisplay || '') + ' · ' + (r.LeaveTypeDisplay || r.LeaveType || '')).replace(/'/g, '');
-      return '<div class="req-card-photo" onclick="openPhotoZoom(\'' + thumb + '\',\'' + cap + '\',\'' + r.AttachmentUrl + '\')">' +
-        '<img src="' + thumb + '" alt="' + T.viewAttachment + '" loading="lazy" onerror="this.parentNode.style.display=\'none\'">' +
+      // ยังไม่ใส่ src ตรงนี้ เพราะรูปต้องดึงผ่านเซิร์ฟเวอร์ (ดูคำอธิบายที่ loadApproverPhoto)
+      return '<div class="req-card-photo" data-request-id="' + r.RequestID + '" data-cap="' + cap + '">' +
+        '<img alt="' + T.viewAttachment + '">' +
         '<div class="req-card-photo-hint">🔍 ' + T.viewAttachment + '</div></div>';
+    }
+
+    // ดึงรูปหลักฐานผ่านเซิร์ฟเวอร์แทนการฝังลิงก์ drive.google.com ตรงๆ
+    // เพราะ Drive จะเช็คสิทธิ์จากบัญชี Google ที่ล็อกอินอยู่ในเบราว์เซอร์ที่เปิดดู
+    // ซึ่งเบราว์เซอร์ในแอป LINE ไม่ได้ล็อกอินบัญชี Google อยู่แล้ว รูปจึงไม่มีทางขึ้นเลย
+    // ฝั่งเซิร์ฟเวอร์ตรวจ PIN ก่อนส่งรูปให้ และตรวจว่ารูปนั้นเป็นของคำขอใบที่ขอมาจริง
+    var approverPhotoCache = {};
+    function loadApproverPhoto(box) {
+      var requestId = box.getAttribute('data-request-id');
+      var img = box.querySelector('img');
+      if (approverPhotoCache[requestId]) { img.src = approverPhotoCache[requestId]; return; }
+      callApi('api_getAttachmentForApprover', [role, getCachedPin(role), requestId]).then(function (res) {
+        if (!res || !res.success || !res.dataUrl) { box.style.display = 'none'; return; }
+        approverPhotoCache[requestId] = res.dataUrl;
+        img.src = res.dataUrl;
+      }).catch(function () { box.style.display = 'none'; });
+    }
+    function loadAllApproverPhotos() {
+      var boxes = document.querySelectorAll('.req-card-photo[data-request-id]');
+      for (var i = 0; i < boxes.length; i++) loadApproverPhoto(boxes[i]);
     }
 
     function renderListCards() {
@@ -1196,6 +1211,17 @@
       }
       em.style.display = 'none';
       wrap.innerHTML = rows.map(buildListCardHtml).join('');
+      loadAllApproverPhotos(); // การ์ดถูกวาดใหม่ทุกครั้งที่ค้นหา ต้องสั่งโหลดรูปใหม่ทุกครั้ง (มีแคชกันดึงซ้ำอยู่แล้ว)
+      // ผูก listener ที่กล่องรายการครั้งเดียว การ์ดข้างในถูกสร้างใหม่เรื่อยๆ จึงใช้วิธีดักที่ตัวแม่
+      if (wrap.dataset.photoClickBound !== '1') {
+        wrap.addEventListener('click', function (e) {
+          var box = e.target.closest ? e.target.closest('.req-card-photo') : null;
+          if (!box) return;
+          var img = box.querySelector('img');
+          if (img && img.src) openPhotoZoom(img.src, box.getAttribute('data-cap'), '');
+        });
+        wrap.dataset.photoClickBound = '1';
+      }
     }
 
     // ======================= หน้าอนุมัติ =======================
@@ -1278,30 +1304,21 @@
           var photoLink = document.createElement('div');
           photoLink.style.cssText = 'display:block;margin-top:14px;cursor:pointer;';
           photoLink.onclick = function () {
-            var big = driveThumb(d.AttachmentUrl, 1600);
-            if (big) openPhotoZoom(big, (d.EmployeeDisplay || '') + ' · ' + (d.LeaveTypeDisplay || d.LeaveType || ''), d.AttachmentUrl);
-            else window.open(d.AttachmentUrl, '_blank', 'noopener');
+            // ขยายรูปที่โหลดมาแล้วในหน้านี้ ไม่ต้องยิงขอใหม่และไม่ต้องพา่ผู้ใช้ออกไป Drive
+            if (photoImg.src) openPhotoZoom(photoImg.src, (d.EmployeeDisplay || '') + ' · ' + (d.LeaveTypeDisplay || d.LeaveType || ''), '');
           };
           var photoImg = document.createElement('img');
           // ไล่ลองทีละแบบ: ลิงก์ที่ backend ส่งมา -> ลิงก์รูปย่อที่คำนวณเองจากรหัสไฟล์ -> ยอมแพ้เหลือแค่ลิงก์
           // ที่ต้องคำนวณเองเผื่อไว้ เพราะถ้ายังไม่ได้ deploy Code.gs ตัวใหม่ backend จะส่งลิงก์แบบเก่า (/uc?export=view)
           // ซึ่ง Google ไม่ให้ฝังรูปข้ามเว็บแล้ว รูปจะไม่ขึ้น ทางนี้ทำให้รูปโชว์ได้ทันทีโดยไม่ต้องรอ deploy
-          var fileIdMatch = String(d.AttachmentUrl).match(/\/d\/([a-zA-Z0-9_-]+)/) ||
-                            String(d.AttachmentUrl).match(/[?&]id=([a-zA-Z0-9_-]+)/);
-          var thumbUrl = fileIdMatch ? ('https://drive.google.com/thumbnail?id=' + fileIdMatch[1] + '&sz=w1000') : '';
-          var srcQueue = [];
-          if (d.AttachmentImageUrl) srcQueue.push(d.AttachmentImageUrl);
-          if (thumbUrl && srcQueue.indexOf(thumbUrl) === -1) srcQueue.push(thumbUrl);
-          srcQueue.push(d.AttachmentUrl);
-          photoImg.src = srcQueue.shift();
+          // ดึงรูปผ่านเซิร์ฟเวอร์เช่นเดียวกับหน้ารายการ (เบราว์เซอร์ใน LINE ไม่ได้ล็อกอิน Google
+          // จึงโหลดรูปจาก drive.google.com ตรงๆ ไม่ได้ ไม่ว่าจะเป็นลิงก์แบบไหนก็ตาม)
           photoImg.alt = T.viewAttachment;
           photoImg.style.cssText = 'width:100%;border-radius:var(--r-input);display:block;box-shadow:var(--shadow);';
-          photoImg.onerror = function () {
-            // ยังมีตัวเลือกถัดไปให้ลอง ก็ลองต่อ ถ้าหมดแล้วค่อยซ่อนรูป
-            // (แก้บั๊ก: เดิมซ่อนแค่รูปแล้วลิงก์ก็ยุบเหลือ 0 พื้นที่ กดไม่ได้จริง ตอนนี้ยังกดลิงก์ได้เสมอไม่ว่ารูปจะขึ้นหรือไม่)
-            if (srcQueue.length) { this.src = srcQueue.shift(); return; }
-            this.style.display = 'none';
-          };
+          callApi('api_getAttachmentForApprover', [role, getCachedPin(role), d.RequestID]).then(function (res) {
+            if (res && res.success && res.dataUrl) photoImg.src = res.dataUrl;
+            else photoLink.style.display = 'none';
+          }).catch(function () { photoLink.style.display = 'none'; });
           photoLink.appendChild(photoImg);
           var photoCaption = document.createElement('div');
           photoCaption.className = 'attach-link';
