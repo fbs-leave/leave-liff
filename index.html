@@ -3,6 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- บอกเบราว์เซอร์ในแอป LINE ว่าอย่าเก็บหน้านี้ไว้ใช้ซ้ำ ให้โหลดใหม่ทุกครั้ง
+     เพราะ LINE แคชหน้า LIFF ไว้แรงมาก ทำให้พนักงานยังเห็นหน้าตาเวอร์ชันเก่าหลังอัปเดตไฟล์แล้ว
+     (ช่วยได้ระดับหนึ่ง แต่ตัวที่ได้ผลชัวร์คือเติม ?v=เลขเวอร์ชัน ต่อท้าย Endpoint URL ใน LINE Developers) -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>ระบบขอลา</title>
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
@@ -177,7 +183,9 @@
   /* หน้าดูวันลาคงเหลือของตัวเอง (พนักงาน) */
   /* หน้าวันลาคงเหลือ: การ์ดรายประเภท (ไอคอนเดียวกับตอนเลือกประเภทในฟอร์มขอลา) */
   .bal-card{ display:flex; align-items:center; gap:12px; background:var(--surface); border-radius:var(--r-card); padding:14px 16px; margin-top:10px; box-shadow:var(--shadow); }
-  .bal-icon{ width:44px; height:44px; border-radius:50%; background:var(--primary-tint); display:flex; align-items:center; justify-content:center; font-size:22px; flex-shrink:0; }
+  .bal-icon{ width:44px; height:44px; border-radius:50%; background:var(--primary-tint); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .bal-icon-svg{ width:22px; height:22px; color:var(--primary); }
+  .req-card-type .ico{ width:18px; height:18px; color:var(--ink3); flex-shrink:0; }
   .bal-info{ flex:1; min-width:0; }
   .bal-name{ font-size:var(--fs-body); font-weight:700; color:var(--ink); }
   .bal-sub{ font-size:13px; color:var(--ink3); margin-top:2px; }
@@ -193,7 +201,11 @@
 
   /* ปุ่มถ่ายรูป/เลือกรูปสำหรับแนบไฟล์ลาป่วย */
   .photo-btn-row{ display:flex; gap:10px; margin-top:6px; }
-  .photo-btn{ flex:1; padding:12px; border-radius:var(--r-input); border:1.5px solid var(--line); background:var(--surface); font-size:14px; font-weight:600; color:var(--ink2); text-align:center; cursor:pointer; }
+  .photo-btn{ flex:1; min-height:44px; padding:10px 8px; border-radius:var(--r-input); border:1.5px solid var(--line);
+    background:var(--surface); font-size:13.5px; font-weight:600; color:var(--ink2); cursor:pointer;
+    display:flex; align-items:center; justify-content:center; gap:7px; }
+  .photo-btn .ico{ width:19px; height:19px; flex-shrink:0; color:var(--ink3); }
+  .photo-btn:active .ico{ color:var(--primary); }
   .photo-btn:active{ background:var(--primary-tint); border-color:var(--primary); color:var(--primary-dark); }
 </style>
 </head>
@@ -247,6 +259,8 @@
   </div>
 
   <div id="debugPanel"></div>
+  <!-- ป้ายเวอร์ชันจางๆ ท้ายหน้า ใช้ดูด้วยตาเปล่าว่าเครื่องนี้โหลดโค้ดตัวล่าสุดแล้วหรือยัง ไม่ต้องเปิด ?debug=1 -->
+  <div id="verTag" style="text-align:center;font-size:10.5px;color:var(--ink3);opacity:.6;margin-top:18px;"></div>
 
   <!-- ดูรูปหลักฐานแบบขยายเต็มจอ (ใช้ร่วมกันทั้งหน้ารายการและหน้าอนุมัติ) แตะที่ใดก็ได้เพื่อปิด -->
   <div id="photoZoom" onclick="closePhotoZoom()">
@@ -315,7 +329,7 @@
         <!-- ไอคอนใช้ SVG เส้นชุดเดียวกันทั้งหมด สีเดียว ไม่ใช้อีโมจิ เพราะอีโมจิหน้าตาต่างกันในแต่ละยี่ห้อมือถือ
              และ 💸 ของ "ลาไม่รับค่าจ้าง" ให้อารมณ์เหมือนประชดพนักงาน -->
         <div class="choice-btn" data-value="ลาพักร้อน" onclick="selectLeaveType('ลาพักร้อน', this)">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v9"/><path d="M12 12c0-4 3-7 7-7-1 3-3 5-7 7z"/><path d="M12 12c0-4-3-7-7-7 1 3 3 5 7 7z"/><path d="M4 21h16"/><path d="M8 21c1-3 2.5-5 4-6s3 3 4 6"/></svg>
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M17 17a9 9 0 00-14 0"/><path d="M12 3v2"/><path d="M3.6 9a9 9 0 0116.8 0z"/><path d="M12 9v12a2 2 0 004 0"/></svg>
           <span class="ltxt">ลาพักร้อน</span><span class="bal-tag" data-bal="ลาพักร้อน"></span>
         </div>
         <div class="choice-btn" data-value="ลากิจ" onclick="selectLeaveType('ลากิจ', this)">
@@ -340,8 +354,13 @@
       <div id="photoWrap" style="display:none;">
         <label>แนบรูปภาพ (จำเป็นสำหรับการลาป่วย)</label>
         <div class="photo-btn-row">
-          <div class="photo-btn" onclick="document.getElementById('sickPhotoCamera').click()">📷 ถ่ายรูป</div>
-          <div class="photo-btn" onclick="document.getElementById('sickPhotoGallery').click()">🖼️ เลือกจากคลังภาพ</div>
+          <!-- ใช้ไอคอนเส้นชุดเดียวกับการ์ดประเภทการลา (สีเดียว ความหนาเส้นเท่ากัน) แทนอีโมจิ -->
+          <div class="photo-btn" onclick="document.getElementById('sickPhotoCamera').click()">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h2l1.5-2h7L17 7h2a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9a2 2 0 012-2z"/><circle cx="12" cy="13" r="3.2"/></svg>
+          <span>ถ่ายรูป</span></div>
+          <div class="photo-btn" onclick="document.getElementById('sickPhotoGallery').click()">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.4"/><path d="M4 17l4.5-4.5 3 3L15 12l5 5"/></svg>
+          <span>เลือกจากคลังภาพ</span></div>
         </div>
         <input type="file" accept="image/*" capture="environment" id="sickPhotoCamera" style="display:none;" onchange="onPhotoSelected(this)">
         <input type="file" accept="image/*" id="sickPhotoGallery" style="display:none;" onchange="onPhotoSelected(this)">
@@ -556,8 +575,13 @@
     var T = role === 'executive' ? T_EN : T_TH;
 
     // เวอร์ชันโค้ด: เอาไว้เช็คว่าไฟล์ที่ GitHub เป็นเวอร์ชันล่าสุดจริงมั้ย (เทียบกับที่ผมส่งให้)
-    var CODE_VERSION = 'v22-holidays-icons-2026-10-05';
+    var CODE_VERSION = 'v24-icons-2026-10-08';
     __log('code version: ' + CODE_VERSION);
+    // โชว์เวอร์ชันท้ายหน้าให้เห็นเลย จะได้ตอบได้ทันทีว่าเครื่องนี้ยังติดหน้าตาเก่าอยู่หรือเปล่า
+    (function () {
+      var vt = document.getElementById('verTag');
+      if (vt) vt.textContent = CODE_VERSION;
+    })();
 
     // ======================= แคช PIN ที่ยืนยันผ่านแล้ว (กันถามซ้ำ) =======================
     // เก็บไว้ใน localStorage แยกตาม role นานสูงสุด 12 ชม. หลังจากนั้นต้องกรอกใหม่
@@ -719,7 +743,20 @@
     // เริ่มต้นเป็นค่าว่าง = ยังไม่เลือกประเภท พนักงานต้องกดเลือกเองก่อนถึงจะส่งได้
     var selectedLeaveType = '';
     var selectedDayType = 'full';
-    var LEAVE_EMOJI = { 'ลาพักร้อน': '🏖️', 'ลากิจ': '💼', 'ลาป่วย': '🩺', 'ลาไม่รับค่าจ้าง': '💸', 'ลาอื่นๆ': '📝' };
+    // ไอคอนประจำประเภทการลา ใช้ชุดเดียวกันทุกหน้า (ฟอร์ม/สรุปก่อนส่ง/วันลาคงเหลือ/รายการอนุมัติ)
+    // เป็น SVG เส้นสีเดียว แทนอีโมจิเดิมที่หน้าตาต่างกันไปตามยี่ห้อมือถือ
+    var LEAVE_ICON_PATHS = {
+      'ลาพักร้อน': '<path d="M17 17a9 9 0 00-14 0"/><path d="M12 3v2"/><path d="M3.6 9a9 9 0 0116.8 0z"/><path d="M12 9v12a2 2 0 004 0"/>',
+      'ลากิจ': '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2"/><path d="M3 12h18"/>',
+      'ลาป่วย': '<rect x="3" y="6" width="18" height="15" rx="2"/><path d="M12 11v6M9 14h6"/><path d="M8 6V4h8v2"/>',
+      'ลาไม่รับค่าจ้าง': '<circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 9.5h4a1.8 1.8 0 010 3.6h-3a1.8 1.8 0 000 3.6h4"/>',
+      'ลาอื่นๆ': '<path d="M5 4h9l5 5v11a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1z"/><path d="M14 4v5h5"/><path d="M8 13h8M8 17h5"/>'
+    };
+    function leaveIconSvg(type, cls) {
+      var paths = LEAVE_ICON_PATHS[type] || LEAVE_ICON_PATHS['ลาอื่นๆ'];
+      return '<svg class="' + (cls || 'ico') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" ' +
+        'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths + '</svg>';
+    }
 
     function initFormPage() {
       document.getElementById('skeletonForm').style.display = 'none';
@@ -1029,7 +1066,7 @@
       var dayLabel = data.halfDay ? ('ครึ่งวัน (' + (data.halfDay === 'AM' ? 'เช้า' : 'บ่าย') + ')') : 'เต็มวัน';
       var dateLabel = (data.startDate === data.endDate) ? fmtDate(data.startDate) : (fmtDate(data.startDate) + ' - ' + fmtDate(data.endDate));
       var rows = [
-        ['ประเภทการลา', (LEAVE_EMOJI[data.leaveType] || '') + ' ' + data.leaveType],
+        ['ประเภทการลา', data.leaveType],
         ['รูปแบบการลา', dayLabel],
         ['วันที่ลา', dateLabel],
         ['เหตุผล', data.reason || '-']
@@ -1106,7 +1143,7 @@
         ? '<button type="button" class="bal-add disabled" disabled aria-label="โควตาหมดแล้ว สำหรับ' + b.type + '">+</button>'
         : '<a class="bal-add" href="?type=' + encodeURIComponent(b.type) + '" aria-label="ยื่นคำขอ' + b.type + '">+</a>';
       return '<div class="bal-card">' +
-        '<div class="bal-icon">' + (LEAVE_EMOJI[b.type] || '📄') + '</div>' +
+        '<div class="bal-icon">' + leaveIconSvg(b.type, 'bal-icon-svg') + '</div>' +
         '<div class="bal-info"><div class="bal-name">' + b.type + '</div>' +
         '<div class="bal-sub">' + quotaLabel + '</div></div>' +
         addBtn +
@@ -1167,7 +1204,7 @@
         if (r.Comment) approverLines += '<div class="hist-comment-line">หมายเหตุ: ' + r.Comment + '</div>';
       }
       return '<div class="req-card"><div class="req-card-row" style="margin-top:0;">' +
-        '<div class="req-card-type">' + (LEAVE_EMOJI[r.LeaveType] || '📄') + ' ' + (r.LeaveType || '-') + '</div>' +
+        '<div class="req-card-type">' + leaveIconSvg(r.LeaveType, 'ico') + (r.LeaveType || '-') + '</div>' +
         '<span class="req-badge ' + balanceBadgeClass(r.Status) + '">' + (r.StatusLabel || r.Status) + '</span></div>' +
         '<div class="req-card-meta"><div>📅 ' + dateLabel + (durLabel ? (' (' + durLabel + ')') : '') + '</div>' +
         (r.Reason ? ('<div>เหตุผล: ' + r.Reason + '</div>') : '') +
