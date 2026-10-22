@@ -575,13 +575,37 @@
     var T = role === 'executive' ? T_EN : T_TH;
 
     // เวอร์ชันโค้ด: เอาไว้เช็คว่าไฟล์ที่ GitHub เป็นเวอร์ชันล่าสุดจริงมั้ย (เทียบกับที่ผมส่งให้)
-    var CODE_VERSION = 'v24-icons-2026-10-08';
+    var CODE_VERSION = 'v25-speed-keepopen-2026-10-21';
     __log('code version: ' + CODE_VERSION);
     // โชว์เวอร์ชันท้ายหน้าให้เห็นเลย จะได้ตอบได้ทันทีว่าเครื่องนี้ยังติดหน้าตาเก่าอยู่หรือเปล่า
     (function () {
       var vt = document.getElementById('verTag');
       if (vt) vt.textContent = CODE_VERSION;
     })();
+
+    // ======================= จับเวลาแต่ละช่วง (ดูได้ด้วย ?debug=1) =======================
+    // ใช้ตอบว่า "ที่โหลดนาน" ช้าตรงไหน: ตอน liff.init, ตอนขอโปรไฟล์ หรือตอนรอเซิร์ฟเวอร์ตอบ
+    var T0 = Date.now();
+    function __ms(label) { __log('+' + (Date.now() - T0) + 'ms ' + label); }
+
+    // ======================= ยิงขอวันลาคงเหลือล่วงหน้า =======================
+    // ปกติต้องรอ liff.init + ขอโปรไฟล์ให้เสร็จก่อน ถึงจะรู้ userId แล้วค่อยยิงไปถามเซิร์ฟเวอร์
+    // สองงานนี้ต่อคิวกัน เวลาเลยบวกกัน และฝั่ง Apps Script ยังมีช่วง "ปลุกเครื่อง" อีกหลายวินาที
+    // แก้โดยจำ userId ของครั้งก่อนไว้ แล้วยิงขอข้อมูลทันทีที่เปิดหน้า ไม่ต้องรอ LIFF
+    // สองงานจึงวิ่งขนานกัน พอ LIFF เสร็จข้อมูลมักจะมาถึงแล้วพอดี
+    var prefetchBalance = null;
+    var prefetchedUserId = null;
+    (function () {
+      if (requestId || isListMode || isHistoryMode || needPinGateEarly()) return; // เฉพาะหน้าฟอร์ม/วันลาคงเหลือ
+      try {
+        prefetchedUserId = localStorage.getItem('leaveLastUserId');
+      } catch (e) { prefetchedUserId = null; }
+      if (!prefetchedUserId) return;
+      __ms('prefetch balance start (cached userId)');
+      prefetchBalance = callApi('api_getMyLeaveBalance', [prefetchedUserId]);
+      prefetchBalance.then(function () { __ms('prefetch balance done'); }).catch(function () {});
+    })();
+    function needPinGateEarly() { return (isListMode || !!requestId); }
 
     // ======================= แคช PIN ที่ยืนยันผ่านแล้ว (กันถามซ้ำ) =======================
     // เก็บไว้ใน localStorage แยกตาม role นานสูงสุด 12 ชม. หลังจากนั้นต้องกรอกใหม่
@@ -630,14 +654,17 @@
       ld.style.display = 'block';
       ld.innerText = 'ไม่พบไลบรารี LIFF กรุณาลองใหม่';
     } else {
+      __ms('liff.init start');
       liff.init({ liffId: LIFF_ID }).then(function () {
-        __log('liff.init success, isInClient=' + liff.isInClient());
+        __ms('liff.init success, isInClient=' + liff.isInClient());
         if (!liff.isLoggedIn()) { liff.login(); return; }
         return liff.getProfile();
       }).then(function (p) {
         if (!p) return;
         profile = p;
-        __log('profile ok: ' + p.displayName);
+        __ms('profile ok: ' + p.displayName);
+        // จำ userId ไว้ให้ครั้งหน้ายิงขอข้อมูลล่วงหน้าได้เลยโดยไม่ต้องรอ LIFF
+        try { localStorage.setItem('leaveLastUserId', p.userId); } catch (e) {}
         if (needPinGate) {
           initPinGatePage();
         } else {
@@ -779,7 +806,12 @@
     var myBalances = null;
     var companyHolidays = {}; // วันหยุดบริษัท รับมาจากเซิร์ฟเวอร์พร้อมยอดวันลาคงเหลือ
     function loadMyBalanceForForm() {
-      callApi('api_getMyLeaveBalance', [profile.userId]).then(function (res) {
+      // ถ้ายิงขอล่วงหน้าไว้แล้วและเป็น userId คนเดียวกัน ใช้ผลนั้นเลย ไม่ต้องยิงซ้ำ
+      var req = (prefetchBalance && prefetchedUserId === profile.userId)
+        ? prefetchBalance
+        : callApi('api_getMyLeaveBalance', [profile.userId]);
+      req.then(function (res) {
+        __ms('balance ready');
         if (!res || !res.success || !res.balances) { showBalanceLoadError(); return; }
         companyHolidays = {};
         (res.holidays || []).forEach(function (d) { companyHolidays[d] = true; });
@@ -1628,11 +1660,13 @@
           hideSpinner();
           showApproveMsg(res.message, res.success);
           if (res.success) {
-            window.alert(res.message);
-            if (typeof liff !== 'undefined' && liff.isInClient && liff.isInClient()) {
-              liff.closeWindow();
-            }
-            // สำเร็จแล้ว ไม่ต้องเปิดปุ่มกลับมาให้กดซ้ำอีก
+            // เดิมปิดหน้าต่าง LIFF ทิ้งทันทีหลังอนุมัติสำเร็จ หัวหน้างานที่มีหลายคนรออนุมัติต้องเปิดลิงก์ใหม่ทุกครั้ง
+            // เปลี่ยนเป็นพากลับไปหน้ารายการรออนุมัติแทน (โหลดข้อมูลใหม่ คนที่เพิ่งอนุมัติจะหายออกจากรายการเอง)
+            // ไม่ใช้ history.back() เพราะจะได้รายการเวอร์ชันเก่าที่ยังมีคนที่อนุมัติไปแล้วค้างอยู่
+            showApproveMsg(res.message + ' · กำลังกลับไปหน้ารายการ...', true);
+            setTimeout(function () {
+              location.href = '?list=1&role=' + encodeURIComponent(role);
+            }, 1200);
           } else {
             // ถ้า PIN ที่แคชไว้ (จากพินเกท) ใช้ไม่ได้แล้ว (เช่น แอดมินเพิ่งเปลี่ยน PIN ใหม่หลังจากแคชไว้)
             // ล้างแคชทิ้งแล้วเปิดช่องกรอก PIN กลับมาให้กรอกใหม่ แทนที่จะค้างล้มเหลวซ้ำๆ แบบไม่รู้สาเหตุ
