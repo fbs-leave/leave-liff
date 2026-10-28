@@ -438,8 +438,9 @@
   <script>
     // ======================= ตั้งค่า =======================
     // URL ของ Google Apps Script /exec ที่ deploy ไว้ (backend/ฐานข้อมูล) - ห้ามลบ /exec ท้าย
-    // ย้ายหลังบ้านมาที่บัญชี fbs.leave@gmail.com เมื่อ 2026-09-02 (URL เดิมของบัญชีส่วนตัวเลิกใช้แล้ว)
-    var EXEC_URL = "https://script.google.com/macros/s/AKfycbyWgwjAL5z5RHIYzV0SIwR1qZmq4oXjwr2cCDmQEeYFGAtE1b4eWasRmEaxixUqxavk2g/exec";
+    // ย้ายหลังบ้านมาที่บัญชี fbs.leave@gmail.com เมื่อ 2026-09-02
+    // เปลี่ยนมาใช้ deployment ตัวที่ Deploy โค้ดใหม่ลงไปจริง เมื่อ 2026-10-28 (ตัวเดิม AKfycbyWgw... เลิกใช้)
+    var EXEC_URL = "https://script.google.com/macros/s/AKfycbw5EqIKaxZpQHOoxfMzENx17yZ-Q4pTqtlkQWaxVn9uyJWmYbiC7rzruoO9_0BX_xy_ww/exec";
     // LIFF ID ของ LIFF app ที่ Endpoint URL ชี้มาที่หน้านี้ (ตั้งค่าใน LINE Developers > LIFF) - ต้องแก้เป็นของจริงก่อนใช้งาน
     var LIFF_ID = "2010670203-cILnaiQM";
 
@@ -575,7 +576,7 @@
     var T = role === 'executive' ? T_EN : T_TH;
 
     // เวอร์ชันโค้ด: เอาไว้เช็คว่าไฟล์ที่ GitHub เป็นเวอร์ชันล่าสุดจริงมั้ย (เทียบกับที่ผมส่งให้)
-    var CODE_VERSION = 'v25-speed-keepopen-2026-10-21';
+    var CODE_VERSION = 'v26-newbackend-2026-10-28';
     __log('code version: ' + CODE_VERSION);
     // โชว์เวอร์ชันท้ายหน้าให้เห็นเลย จะได้ตอบได้ทันทีว่าเครื่องนี้ยังติดหน้าตาเก่าอยู่หรือเปล่า
     (function () {
