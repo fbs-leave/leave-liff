@@ -138,7 +138,10 @@
   .req-card-meta{ font-size:13.5px; color:var(--ink2); margin-top:8px; }
   .req-card-meta div{ margin-top:3px; }
   .req-card-btns{ display:flex; gap:10px; margin-top:14px; }
-  .req-card-btns a{ flex:1; text-align:center; padding:11px; border-radius:var(--r-btn); font-size:14.5px; font-weight:700; text-decoration:none; }
+  /* ปุ่มอนุมัติในการ์ดเป็น <button> ได้แล้ว (กดอนุมัติในหน้าเดียวจบ) จึงต้องจัดสไตล์ให้เหมือนกันทั้ง a และ button */
+  .req-card-btns a, .req-card-btns button{ flex:1; text-align:center; padding:11px; border:none; border-radius:var(--r-btn);
+    font-family:inherit; font-size:14.5px; font-weight:700; text-decoration:none; cursor:pointer; }
+  .req-card-btns button:disabled{ opacity:.6; cursor:default; }
   .req-card-btn-reject{ background:var(--danger-tint); color:var(--danger); }
   .req-card-btn-approve{ background:var(--primary); color:#fff; }
   /* ยอดวันลาคงเหลือที่ติดอยู่บนการ์ดประเภทการลา */
@@ -576,7 +579,7 @@
     var T = role === 'executive' ? T_EN : T_TH;
 
     // เวอร์ชันโค้ด: เอาไว้เช็คว่าไฟล์ที่ GitHub เป็นเวอร์ชันล่าสุดจริงมั้ย (เทียบกับที่ผมส่งให้)
-    var CODE_VERSION = 'v26-newbackend-2026-10-28';
+    var CODE_VERSION = 'v27-fast-approve-2026-11-07';
     __log('code version: ' + CODE_VERSION);
     // โชว์เวอร์ชันท้ายหน้าให้เห็นเลย จะได้ตอบได้ทันทีว่าเครื่องนี้ยังติดหน้าตาเก่าอยู่หรือเปล่า
     (function () {
@@ -596,17 +599,31 @@
     // สองงานจึงวิ่งขนานกัน พอ LIFF เสร็จข้อมูลมักจะมาถึงแล้วพอดี
     var prefetchBalance = null;
     var prefetchedUserId = null;
+    var prefetchList = null;      // รายการรออนุมัติของหัวหน้างาน/ผู้บริหาร
+    var prefetchDetail = null;    // รายละเอียดคำขอใบเดียว (หน้าอนุมัติ)
     (function () {
-      if (requestId || isListMode || isHistoryMode || needPinGateEarly()) return; // เฉพาะหน้าฟอร์ม/วันลาคงเหลือ
-      try {
-        prefetchedUserId = localStorage.getItem('leaveLastUserId');
-      } catch (e) { prefetchedUserId = null; }
-      if (!prefetchedUserId) return;
-      __ms('prefetch balance start (cached userId)');
-      prefetchBalance = callApi('api_getMyLeaveBalance', [prefetchedUserId]);
-      prefetchBalance.then(function () { __ms('prefetch balance done'); }).catch(function () {});
+      // หน้าฟอร์ม/วันลาคงเหลือ: ยิงขอยอดวันลาคงเหลือล่วงหน้าด้วย userId ที่จำไว้
+      if (!requestId && !isListMode && !isHistoryMode) {
+        try { prefetchedUserId = localStorage.getItem('leaveLastUserId'); } catch (e) { prefetchedUserId = null; }
+        if (prefetchedUserId) {
+          __ms('prefetch balance start');
+          prefetchBalance = callApi('api_getMyLeaveBalance', [prefetchedUserId]);
+          prefetchBalance.then(function () { __ms('prefetch balance done'); }).catch(function () {});
+        }
+        return;
+      }
+      // หน้ารายการ/หน้าอนุมัติ: ข้อมูลพวกนี้ไม่ได้ผูกกับ userId จึงยิงขอได้เลยตั้งแต่เปิดหน้า
+      // ไม่ต้องรอ liff.init กับการกรอก PIN ให้เสร็จก่อน (PIN ใช้กันคนเข้าดูหน้า ไม่ใช่เงื่อนไขของข้อมูล)
+      if (isListMode) {
+        __ms('prefetch list start');
+        prefetchList = callApi('api_getRequestsList', [role, 'pending']);
+        prefetchList.then(function () { __ms('prefetch list done'); }).catch(function () {});
+      } else if (requestId) {
+        __ms('prefetch detail start');
+        prefetchDetail = callApi('api_getRequestDetail', [requestId, role]);
+        prefetchDetail.then(function () { __ms('prefetch detail done'); }).catch(function () {});
+      }
     })();
-    function needPinGateEarly() { return (isListMode || !!requestId); }
 
     // ======================= แคช PIN ที่ยืนยันผ่านแล้ว (กันถามซ้ำ) =======================
     // เก็บไว้ใน localStorage แยกตาม role นานสูงสุด 12 ชม. หลังจากนั้นต้องกรอกใหม่
@@ -1305,7 +1322,11 @@
         '<div class="skel skel-block" style="height:120px;margin-top:12px;border-radius:var(--r-card);"></div>' +
         '<div class="skel skel-block" style="height:120px;margin-top:10px;border-radius:var(--r-card);"></div>';
       document.getElementById('listEmpty').style.display = 'none';
-      callApi('api_getRequestsList', [role, listMode]).then(function (res) {
+      // แท็บ "รอดำเนินการ" ตอนเปิดหน้าครั้งแรก ใช้ผลที่ยิงขอล่วงหน้าไว้แล้ว (ใช้ได้ครั้งเดียว ที่เหลือยิงใหม่ตามปกติ)
+      var req = (prefetchList && listMode === 'pending') ? prefetchList : callApi('api_getRequestsList', [role, listMode]);
+      prefetchList = null;
+      req.then(function (res) {
+        __ms('list ready');
         listRowsCache = res.success ? res.rows : [];
         renderListCards();
       }).catch(function (err) {
@@ -1363,9 +1384,17 @@
       }
 
       var detailUrl = '?id=' + encodeURIComponent(r.RequestID) + '&role=' + role;
-      var actionBtns = listMode === 'pending'
-        ? '<div class="req-card-btns"><a class="req-card-btn-reject" href="' + detailUrl + '">' + T.btnReject + '</a><a class="req-card-btn-approve" href="' + detailUrl + '">' + T.btnApprove + '</a></div>'
-        : '';
+      // ปุ่ม "อนุมัติ" กดจบในหน้ารายการเลยถ้ามี PIN ที่ยืนยันแล้วแคชอยู่
+      // เดิมต้องเปิดหน้าใหม่ (โหลด LIFF ใหม่ทั้งหน้า) -> กดอนุมัติ -> เด้งกลับมาหน้ารายการ (โหลดใหม่อีกรอบ)
+      // = โหลดหน้าเต็ม 2 ครั้งต่อการอนุมัติ 1 คน ซึ่งเป็นสาเหตุหลักที่รู้สึกว่าช้าทุกขั้นตอน
+      // ส่วน "ไม่อนุมัติ" ยังต้องเข้าหน้ารายละเอียด เพราะบังคับให้ระบุเหตุผล
+      var actionBtns = '';
+      if (listMode === 'pending') {
+        var approveBtn = getCachedPin(role)
+          ? '<button type="button" class="req-card-btn-approve" data-approve-id="' + r.RequestID + '">' + T.btnApprove + '</button>'
+          : '<a class="req-card-btn-approve" href="' + detailUrl + '">' + T.btnApprove + '</a>';
+        actionBtns = '<div class="req-card-btns"><a class="req-card-btn-reject" href="' + detailUrl + '">' + T.btnReject + '</a>' + approveBtn + '</div>';
+      }
 
       return '<div class="req-card">' +
         '<a href="' + detailUrl + '" class="req-card-head-link"><div class="req-card-head">' + avatar +
@@ -1406,6 +1435,59 @@
         img.src = res.dataUrl;
       }).catch(function () { box.style.display = 'none'; });
     }
+    // อนุมัติจากหน้ารายการโดยไม่ต้องเปิดหน้าใหม่: กดปุ่ม -> ยืนยัน -> ยิง API -> การ์ดหายไปจากรายการทันที
+    // ไม่มีการโหลดหน้าใหม่เลยสักครั้ง จึงเร็วกว่าเดิมมากเวลาต้องอนุมัติหลายคนติดกัน
+    function bindInlineApprove(wrap) {
+      if (wrap.dataset.approveBound === '1') return;
+      wrap.dataset.approveBound = '1';
+      wrap.addEventListener('click', function (e) {
+        var btn = e.target.closest ? e.target.closest('[data-approve-id]') : null;
+        if (!btn || btn.disabled) return;
+        inlineApprove(btn);
+      });
+    }
+    function inlineApprove(btn) {
+      var reqId = btn.getAttribute('data-approve-id');
+      var row = listRowsCache.filter(function (r) { return String(r.RequestID) === String(reqId); })[0];
+      var who = row ? (row.EmployeeSubDisplay || row.EmployeeDisplay || '') : '';
+      var msg = T.confirmApprove + (who ? ('\n(' + who + ')') : '');
+      // เตือนเรื่องคนลาซ้อนกันให้เห็นก่อนกดยืนยัน เหมือนที่หน้ารายละเอียดทำ
+      if (row && row.OverlapCount) {
+        msg = '⚠ ' + (role === 'executive'
+          ? (row.OverlapCount + T.overlapNote)
+          : (T.overlapNote + row.OverlapCount + ' คน')) + '\n\n' + msg;
+      }
+      if (!window.confirm(msg)) return;
+
+      btn.disabled = true;
+      btn.innerText = T.sending;
+      var pin = getCachedPin(role);
+      callApi('api_approve', [reqId, role, pin, profile.userId, profile.displayName, 'approve', ''])
+        .then(function (res) {
+          if (res && res.success) {
+            // เอาออกจากข้อมูลในเครื่องแล้ววาดใหม่ ไม่ต้องยิงขอรายการทั้งหมดจากเซิร์ฟเวอร์อีกรอบ
+            listRowsCache = listRowsCache.filter(function (r) { return String(r.RequestID) !== String(reqId); });
+            renderListCards();
+            return;
+          }
+          btn.disabled = false;
+          btn.innerText = T.btnApprove;
+          // PIN ที่แคชไว้ใช้ไม่ได้แล้ว (แอดมินเปลี่ยน PIN) ล้างทิ้งแล้วให้ไปกรอกใหม่ที่หน้ารายละเอียด
+          if (res && /ไม่ถูกต้อง|Incorrect/.test(res.message || '')) {
+            clearCachedPin(role);
+            window.alert(res.message);
+            location.href = '?id=' + encodeURIComponent(reqId) + '&role=' + role;
+            return;
+          }
+          window.alert((res && res.message) || T.error);
+        })
+        .catch(function (err) {
+          btn.disabled = false;
+          btn.innerText = T.btnApprove;
+          window.alert(T.error + err);
+        });
+    }
+
     function loadAllApproverPhotos() {
       var boxes = document.querySelectorAll('.req-card-photo[data-request-id]');
       for (var i = 0; i < boxes.length; i++) loadApproverPhoto(boxes[i]);
@@ -1427,6 +1509,7 @@
       em.style.display = 'none';
       wrap.innerHTML = rows.map(buildListCardHtml).join('');
       loadAllApproverPhotos(); // การ์ดถูกวาดใหม่ทุกครั้งที่ค้นหา ต้องสั่งโหลดรูปใหม่ทุกครั้ง (มีแคชกันดึงซ้ำอยู่แล้ว)
+      bindInlineApprove(wrap);
       // ผูก listener ที่กล่องรายการครั้งเดียว การ์ดข้างในถูกสร้างใหม่เรื่อยๆ จึงใช้วิธีดักที่ตัวแม่
       if (wrap.dataset.photoClickBound !== '1') {
         wrap.addEventListener('click', function (e) {
@@ -1477,7 +1560,9 @@
         document.getElementById('otp').style.display = 'none';
         document.getElementById('hintPin').style.display = 'none';
       }
-      callApi('api_getRequestDetail', [requestId, role]).then(function (res) {
+      // ใช้ผลที่ยิงขอล่วงหน้าไว้ตั้งแต่เปิดหน้า (วิ่งขนานกับ liff.init) ถ้ามี
+      (prefetchDetail || callApi('api_getRequestDetail', [requestId, role])).then(function (res) {
+        __ms('detail ready');
         var skel = document.getElementById('skeletonApprove');
         var content = document.getElementById('approveContent');
         var appEl = document.getElementById('approveApp');
